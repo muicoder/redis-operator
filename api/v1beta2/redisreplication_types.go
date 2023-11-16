@@ -1,6 +1,7 @@
 package v1beta2
 
 import (
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -35,7 +36,9 @@ func (cr *RedisReplicationSpec) GetReplicationCounts(t string) int32 {
 
 // RedisStatus defines the observed state of Redis
 type RedisReplicationStatus struct {
-	MasterNode string `json:"masterNode,omitempty"`
+	MasterNode string                       `json:"masterNode,omitempty"`
+	State      status.RedisReplicationState `json:"state,omitempty"`
+	Reason     string                       `json:"reason,omitempty"`
 }
 
 // +kubebuilder:object:root=true

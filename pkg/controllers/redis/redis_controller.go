@@ -20,6 +20,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/pkg/controllerutil"
 	"github.com/OT-CONTAINER-KIT/redis-operator/pkg/k8sutils"
@@ -42,7 +43,7 @@ type RedisReconciler struct {
 
 func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Request.Namespace", req.Namespace, "Request.Name", req.Name)
-	reqLogger.Info("Reconciling opstree redis controller")
+	reqLogger.Info("Reconciling standalone controller")
 	instance := &redisv1beta2.Redis{}
 
 	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
@@ -55,7 +56,7 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 		return intctrlutil.Reconciled()
 	}
-	if _, found := instance.ObjectMeta.GetAnnotations()["redis.opstreelabs.in/skip-reconcile"]; found {
+	if _, found := instance.ObjectMeta.GetAnnotations()[redisv1beta2.GroupVersion.Group+"/skip-reconcile"]; found {
 		return intctrlutil.RequeueAfter(reqLogger, time.Second*10, "found skip reconcile annotation")
 	}
 	if err = k8sutils.AddFinalizer(instance, k8sutils.RedisFinalizer, r.Client); err != nil {
@@ -68,6 +69,17 @@ func (r *RedisReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	err = k8sutils.CreateStandaloneService(instance, r.K8sClient)
 	if err != nil {
 		return intctrlutil.RequeueWithError(err, reqLogger, "failed to create service")
+	}
+	if k8sutils.CheckRedisStandaloneReady(r.K8sClient, r.Log, instance) {
+		err = k8sutils.UpdateRedisStandaloneStatus(instance, status.RedisStandaloneReady, status.ReadyStandaloneReason)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	} else {
+		err = k8sutils.UpdateRedisStandaloneStatus(instance, status.RedisStandaloneInitializing, status.InitializingStandaloneReason)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 	return intctrlutil.RequeueAfter(reqLogger, time.Second*10, "requeue after 10 seconds")
 }

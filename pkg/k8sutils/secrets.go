@@ -65,7 +65,7 @@ func getRedisTLSConfig(client kubernetes.Interface, logger logr.Logger, namespac
 		Certificates: []tls.Certificate{cert},
 		ServerName:   podName,
 		RootCAs:      tlsCaCertificates,
-		MinVersion:   tls.VersionTLS12,
+		MinVersion:   tls.VersionTLS10,
 		ClientAuth:   tls.NoClientCert,
 	}
 }

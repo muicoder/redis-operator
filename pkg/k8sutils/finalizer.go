@@ -21,8 +21,19 @@ const (
 	RedisSentinelFinalizer    string = "redisSentinelFinalizer"
 )
 
+var RedisEntrypoint = "entrypoint." + redisv1beta2.GroupVersion.Group
+
+// finalizeLogger will generate logging interface
+func finalizerLogger(namespace string, name string) logr.Logger {
+	reqLogger := log.WithValues("Request.Service.Namespace", namespace, "Request.Finalizer.Name", name)
+	return reqLogger
+}
+
 // HandleRedisFinalizer finalize resource if instance is marked to be deleted
 func HandleRedisFinalizer(ctrlclient client.Client, k8sClient kubernetes.Interface, logger logr.Logger, cr *redisv1beta2.Redis) error {
+	if _, err := k8sClient.CoreV1().ConfigMaps(cr.Namespace).Get(context.TODO(), RedisEntrypoint, metav1.GetOptions{}); err != nil {
+		return err
+	}
 	if cr.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(cr, RedisFinalizer) {
 			if cr.Spec.Storage != nil && !cr.Spec.Storage.KeepAfterDelete {
@@ -42,6 +53,9 @@ func HandleRedisFinalizer(ctrlclient client.Client, k8sClient kubernetes.Interfa
 
 // HandleRedisClusterFinalizer finalize resource if instance is marked to be deleted
 func HandleRedisClusterFinalizer(ctrlclient client.Client, k8sClient kubernetes.Interface, logger logr.Logger, cr *redisv1beta2.RedisCluster) error {
+	if _, err := k8sClient.CoreV1().ConfigMaps(cr.Namespace).Get(context.TODO(), RedisEntrypoint, metav1.GetOptions{}); err != nil {
+		return err
+	}
 	if cr.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(cr, RedisClusterFinalizer) {
 			if cr.Spec.Storage != nil && !cr.Spec.Storage.KeepAfterDelete {
@@ -61,6 +75,9 @@ func HandleRedisClusterFinalizer(ctrlclient client.Client, k8sClient kubernetes.
 
 // Handle RedisReplicationFinalizer finalize resource if instance is marked to be deleted
 func HandleRedisReplicationFinalizer(ctrlclient client.Client, k8sClient kubernetes.Interface, logger logr.Logger, cr *redisv1beta2.RedisReplication) error {
+	if _, err := k8sClient.CoreV1().ConfigMaps(cr.Namespace).Get(context.TODO(), RedisEntrypoint, metav1.GetOptions{}); err != nil {
+		return err
+	}
 	if cr.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(cr, RedisReplicationFinalizer) {
 			if cr.Spec.Storage != nil && !cr.Spec.Storage.KeepAfterDelete {
@@ -79,7 +96,10 @@ func HandleRedisReplicationFinalizer(ctrlclient client.Client, k8sClient kuberne
 }
 
 // HandleRedisSentinelFinalizer finalize resource if instance is marked to be deleted
-func HandleRedisSentinelFinalizer(ctrlclient client.Client, logger logr.Logger, cr *redisv1beta2.RedisSentinel) error {
+func HandleRedisSentinelFinalizer(ctrlclient client.Client, k8sClient kubernetes.Interface, logger logr.Logger, cr *redisv1beta2.RedisSentinel) error {
+	if _, err := k8sClient.CoreV1().ConfigMaps(cr.Namespace).Get(context.TODO(), RedisEntrypoint, metav1.GetOptions{}); err != nil {
+		return err
+	}
 	if cr.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(cr, RedisSentinelFinalizer) {
 			controllerutil.RemoveFinalizer(cr, RedisSentinelFinalizer)

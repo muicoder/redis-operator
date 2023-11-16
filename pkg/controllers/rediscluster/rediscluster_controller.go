@@ -47,7 +47,7 @@ type RedisClusterReconciler struct {
 
 func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Request.Namespace", req.Namespace, "Request.Name", req.Name)
-	reqLogger.V(1).Info("Reconciling opstree redis Cluster controller")
+	reqLogger.V(1).Info("Reconciling cluster controller")
 	instance := &redisv1beta2.RedisCluster{}
 
 	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
@@ -60,7 +60,7 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 		return intctrlutil.Reconciled()
 	}
-	if _, found := instance.ObjectMeta.GetAnnotations()["rediscluster.opstreelabs.in/skip-reconcile"]; found {
+	if _, found := instance.ObjectMeta.GetAnnotations()[redisv1beta2.GroupVersion.Group+"/skip-reconcile"]; found {
 		return intctrlutil.RequeueAfter(reqLogger, time.Second*10, "found skip reconcile annotation")
 	}
 	instance.SetDefault()

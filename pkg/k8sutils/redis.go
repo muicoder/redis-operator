@@ -169,12 +169,10 @@ func ExecuteRedisClusterCommand(ctx context.Context, client kubernetes.Interface
 	}
 
 	if cr.Spec.KubernetesConfig.ExistingPasswordSecret != nil {
-		pass, err := getRedisPassword(client, logger, cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
+		_, err := getRedisPassword(client, logger, cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
 		if err != nil {
 			logger.Error(err, "Error in getting redis password")
 		}
-		cmd = append(cmd, "-a")
-		cmd = append(cmd, pass)
 	}
 	cmd = append(cmd, getRedisTLSArgs(cr.Spec.TLS, cr.ObjectMeta.Name+"-leader-0")...)
 	logger.V(1).Info("Redis cluster creation command is", "Command", cmd)
@@ -209,11 +207,9 @@ func createRedisReplicationCommand(client kubernetes.Interface, logger logr.Logg
 	cmd = append(cmd, followerAddress, leaderAddress, "--cluster-slave")
 
 	if cr.Spec.KubernetesConfig.ExistingPasswordSecret != nil {
-		pass, err := getRedisPassword(client, logger, cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
+		_, err := getRedisPassword(client, logger, cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
 		if err != nil {
 			logger.Error(err, "Failed to retrieve Redis password", "Secret", *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name)
-		} else {
-			cmd = append(cmd, "-a", pass)
 		}
 	}
 
@@ -387,12 +383,10 @@ func RedisClusterStatusHealth(ctx context.Context, client kubernetes.Interface, 
 
 	cmd := []string{"redis-cli", "--cluster", "check", "127.0.0.1:6379"}
 	if cr.Spec.KubernetesConfig.ExistingPasswordSecret != nil {
-		pass, err := getRedisPassword(client, logger, cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
+		_, err := getRedisPassword(client, logger, cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
 		if err != nil {
 			logger.Error(err, "Error in getting redis password")
 		}
-		cmd = append(cmd, "-a")
-		cmd = append(cmd, pass)
 	}
 	cmd = append(cmd, getRedisTLSArgs(cr.Spec.TLS, cr.ObjectMeta.Name+"-leader-0")...)
 	out, err := executeCommand1(client, logger, cr, cmd, cr.ObjectMeta.Name+"-leader-0")
@@ -522,7 +516,7 @@ func getContainerID(client kubernetes.Interface, logger logr.Logger, cr *redisv1
 	targetContainer := -1
 	for containerID, tr := range pod.Spec.Containers {
 		logger.V(1).Info("Inspecting container", "Pod Name", podName, "Container ID", containerID, "Container Name", tr.Name)
-		if tr.Name == cr.ObjectMeta.Name+"-leader" {
+		if tr.Name == redisContainer {
 			targetContainer = containerID
 			logger.V(1).Info("Leader container found", "Container ID", containerID, "Container Name", tr.Name)
 			break
@@ -663,7 +657,7 @@ func CreateMasterSlaveReplication(ctx context.Context, client kubernetes.Interfa
 			redisClient := configureRedisReplicationClient(client, logger, cr, masterPods[i])
 			defer redisClient.Close()
 			logger.V(1).Info("Setting the", "pod", masterPods[i], "to slave of", realMasterPod)
-			err := redisClient.SlaveOf(ctx, realMasterPodIP, "6379").Err()
+			err := redisClient.SlaveOf(ctx, realMasterPodIP, strconv.Itoa(redisPort)).Err()
 			if err != nil {
 				logger.Error(err, "Failed to set", "pod", masterPods[i], "to slave of", realMasterPod)
 				return err
@@ -684,4 +678,40 @@ func GetRedisReplicationRealMaster(ctx context.Context, client kubernetes.Interf
 		}
 	}
 	return ""
+}
+
+func CheckRedisStandaloneReady(client kubernetes.Interface, logger logr.Logger, cr *redisv1beta2.Redis) bool {
+	sts, err := client.AppsV1().StatefulSets(cr.Namespace).Get(context.TODO(), cr.Name, metav1.GetOptions{})
+	if err != nil {
+		logger.Error(err, "Check Redis Standalone NotReady", cr.Namespace, cr.Name)
+		return false
+	}
+	if sts.Status.ReadyReplicas == 1 {
+		return true
+	}
+	return false
+}
+
+func CheckRedisSentinelReady(client kubernetes.Interface, logger logr.Logger, cr *redisv1beta2.RedisSentinel) bool {
+	sts, err := client.AppsV1().StatefulSets(cr.Namespace).Get(context.TODO(), cr.Name+"-sentinel", metav1.GetOptions{})
+	if err != nil {
+		logger.Error(err, "Check Redis Sentinel NotReady", cr.Namespace, cr.Name)
+		return false
+	}
+	if sts.Status.ReadyReplicas == *cr.Spec.Size {
+		return true
+	}
+	return false
+}
+
+func CheckRedisReplicationReady(client kubernetes.Interface, logger logr.Logger, cr *redisv1beta2.RedisReplication) bool {
+	sts, err := client.AppsV1().StatefulSets(cr.Namespace).Get(context.TODO(), cr.Name, metav1.GetOptions{})
+	if err != nil {
+		logger.Error(err, "Check Redis Replication NotReady", cr.Namespace, cr.Name)
+		return false
+	}
+	if sts.Status.ReadyReplicas == *cr.Spec.Size {
+		return true
+	}
+	return false
 }

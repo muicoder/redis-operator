@@ -25,13 +25,8 @@ func CreateReplicationService(cr *redisv1beta2.RedisReplication, cl kubernetes.I
 		epp = disableMetrics
 	}
 	annotations := generateServiceAnots(cr.ObjectMeta, nil, epp)
-	additionalServiceAnnotations := map[string]string{}
-	if cr.Spec.KubernetesConfig.Service != nil {
-		additionalServiceAnnotations = cr.Spec.KubernetesConfig.Service.ServiceAnnotations
-	}
 	objectMetaInfo := generateObjectMetaInformation(cr.ObjectMeta.Name, cr.Namespace, labels, annotations)
 	headlessObjectMetaInfo := generateObjectMetaInformation(cr.ObjectMeta.Name+"-headless", cr.Namespace, labels, annotations)
-	additionalObjectMetaInfo := generateObjectMetaInformation(cr.ObjectMeta.Name+"-additional", cr.Namespace, labels, generateServiceAnots(cr.ObjectMeta, additionalServiceAnnotations, epp))
 	err := CreateOrUpdateService(cr.Namespace, headlessObjectMetaInfo, redisReplicationAsOwner(cr), disableMetrics, true, "ClusterIP", redisPort, cl)
 	if err != nil {
 		logger.Error(err, "Cannot create replication headless service for Redis")
@@ -40,15 +35,6 @@ func CreateReplicationService(cr *redisv1beta2.RedisReplication, cl kubernetes.I
 	err = CreateOrUpdateService(cr.Namespace, objectMetaInfo, redisReplicationAsOwner(cr), epp, false, "ClusterIP", redisPort, cl)
 	if err != nil {
 		logger.Error(err, "Cannot create replication service for Redis")
-		return err
-	}
-	additionalServiceType := "ClusterIP"
-	if cr.Spec.KubernetesConfig.Service != nil {
-		additionalServiceType = cr.Spec.KubernetesConfig.Service.ServiceType
-	}
-	err = CreateOrUpdateService(cr.Namespace, additionalObjectMetaInfo, redisReplicationAsOwner(cr), disableMetrics, false, additionalServiceType, redisPort, cl)
-	if err != nil {
-		logger.Error(err, "Cannot create additional service for Redis Replication")
 		return err
 	}
 	return nil
@@ -115,7 +101,7 @@ func generateRedisReplicationParams(cr *redisv1beta2.RedisReplication) statefulS
 	if cr.Spec.ServiceAccountName != nil {
 		res.ServiceAccountName = cr.Spec.ServiceAccountName
 	}
-	if _, found := cr.ObjectMeta.GetAnnotations()[AnnotationKeyRecreateStatefulset]; found {
+	if _, found := cr.ObjectMeta.GetAnnotations()[redisv1beta2.GroupVersion.Group+"/recreate-statefulset"]; found {
 		res.RecreateStatefulSet = true
 	}
 	return res
@@ -159,6 +145,10 @@ func generateRedisReplicationContainerParams(cr *redisv1beta2.RedisReplication) 
 		if cr.Spec.RedisExporter.EnvVars != nil {
 			containerProp.RedisExporterEnv = cr.Spec.RedisExporter.EnvVars
 		}
+
+		if cr.Spec.RedisExporter.Port != nil {
+			containerProp.RedisExporterPort = cr.Spec.RedisExporter.Port
+		}
 	}
 	if cr.Spec.ReadinessProbe != nil {
 		containerProp.ReadinessProbe = cr.Spec.ReadinessProbe
@@ -166,7 +156,7 @@ func generateRedisReplicationContainerParams(cr *redisv1beta2.RedisReplication) 
 	if cr.Spec.LivenessProbe != nil {
 		containerProp.LivenessProbe = cr.Spec.LivenessProbe
 	}
-	if cr.Spec.Storage != nil {
+	if cr.Spec.Storage.VolumeClaimTemplate.Spec.AccessModes != nil {
 		containerProp.PersistenceEnabled = &trueProperty
 	}
 	if cr.Spec.TLS != nil {
@@ -202,7 +192,7 @@ func generateRedisReplicationInitContainerParams(cr *redisv1beta2.RedisReplicati
 			initcontainerProp.AdditionalVolume = cr.Spec.Storage.VolumeMount.Volume
 			initcontainerProp.AdditionalMountPath = cr.Spec.Storage.VolumeMount.MountPath
 		}
-		if cr.Spec.Storage != nil {
+		if cr.Spec.Storage.VolumeClaimTemplate.Spec.AccessModes != nil {
 			initcontainerProp.PersistenceEnabled = &trueProperty
 		}
 	}

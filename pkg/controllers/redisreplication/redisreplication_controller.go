@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/pkg/controllerutil"
 	"github.com/OT-CONTAINER-KIT/redis-operator/pkg/k8sutils"
@@ -30,7 +31,7 @@ type RedisReplicationReconciler struct {
 
 func (r *RedisReplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Request.Namespace", req.Namespace, "Request.Name", req.Name)
-	reqLogger.Info("Reconciling opstree redis replication controller")
+	reqLogger.Info("Reconciling replication controller")
 	instance := &redisv1beta2.RedisReplication{}
 
 	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
@@ -43,7 +44,7 @@ func (r *RedisReplicationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 		return intctrlutil.Reconciled()
 	}
-	if _, found := instance.ObjectMeta.GetAnnotations()["redisreplication.opstreelabs.in/skip-reconcile"]; found {
+	if _, found := instance.ObjectMeta.GetAnnotations()[redisv1beta2.GroupVersion.Group+"/skip-reconcile"]; found {
 		return intctrlutil.RequeueAfter(reqLogger, time.Second*10, "found skip reconcile annotation")
 	}
 	if err = k8sutils.AddFinalizer(instance, k8sutils.RedisReplicationFinalizer, r.Client); err != nil {
@@ -80,6 +81,17 @@ func (r *RedisReplicationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	if err = r.UpdateRedisPodRoleLabel(ctx, instance, realMaster); err != nil {
 		return intctrlutil.RequeueWithError(err, reqLogger, "")
+	}
+	if k8sutils.CheckRedisReplicationReady(r.K8sClient, r.Log, instance) {
+		err = k8sutils.UpdateRedisReplicationStatus(instance, status.RedisReplicationReady, status.ReadyReplicationReason)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	} else {
+		err = k8sutils.UpdateRedisReplicationStatus(instance, status.RedisReplicationInitializing, status.InitializingReplicationReason)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 	return intctrlutil.RequeueAfter(reqLogger, time.Second*10, "")
 }
