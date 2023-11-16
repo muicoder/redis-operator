@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -43,7 +44,10 @@ type RedisSpec struct {
 }
 
 // RedisStatus defines the observed state of Redis
-type RedisStatus struct{}
+type RedisStatus struct {
+	State  status.RedisStandaloneState `json:"state,omitempty"`
+	Reason string                      `json:"reason,omitempty"`
+}
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

@@ -4,11 +4,13 @@ import (
 	"context"
 	"time"
 
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/pkg/controllerutil"
 	"github.com/OT-CONTAINER-KIT/redis-operator/pkg/k8sutils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -33,13 +35,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return intctrlutil.RequeueWithErrorChecking(ctx, err, "failed to get RedisReplication instance")
 	}
 
-	var reconcilers []reconciler
+	var reconcilers []reconcilement
 	if k8sutils.IsDeleted(instance) {
-		reconcilers = []reconciler{
+		reconcilers = []reconcilement{
 			{typ: "finalizer", rec: r.reconcileFinalizer},
 		}
 	} else {
-		reconcilers = []reconciler{
+		reconcilers = []reconcilement{
 			{typ: "annotation", rec: r.reconcileAnnotation},
 			{typ: "finalizer", rec: r.reconcileFinalizer},
 			{typ: "statefulset", rec: r.reconcileStatefulSet},
@@ -58,8 +60,22 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return result, nil
 		}
 	}
+	sts, err := r.K8sClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.Name, metav1.GetOptions{})
+	if err == nil {
+		if sts.Status.ReadyReplicas == *instance.Spec.Size {
+			instance.Status.State = status.RedisReplicationReady
+			instance.Status.Reason = status.ReadyReplicationReason
+		} else {
+			instance.Status.State = status.RedisReplicationInitializing
+			instance.Status.Reason = status.InitializingReplicationReason
+		}
+	} else {
+		instance.Status.State = status.RedisReplicationFailed
+		instance.Status.Reason = status.FailedReplicationReason
+	}
+	r.Client.Status().Update(ctx, instance)
 
-	return intctrlutil.RequeueAfter(ctx, time.Second*10, "")
+	return intctrlutil.RequeueAfter(ctx, time.Second*10, "requeue after 10 seconds")
 }
 
 func (r *Reconciler) UpdateRedisReplicationMaster(ctx context.Context, instance *redisv1beta2.RedisReplication, masterNode string) error {
@@ -105,7 +121,7 @@ func (r *Reconciler) UpdateRedisPodRoleLabel(ctx context.Context, cr *redisv1bet
 	return nil
 }
 
-type reconciler struct {
+type reconcilement struct {
 	typ string
 	rec func(ctx context.Context, instance *redisv1beta2.RedisReplication) (ctrl.Result, error)
 }
@@ -124,7 +140,10 @@ func (r *Reconciler) reconcileFinalizer(ctx context.Context, instance *redisv1be
 }
 
 func (r *Reconciler) reconcileAnnotation(ctx context.Context, instance *redisv1beta2.RedisReplication) (ctrl.Result, error) {
-	if _, found := instance.ObjectMeta.GetAnnotations()["redisreplication.opstreelabs.in/skip-reconcile"]; found {
+	if _, err := r.K8sClient.CoreV1().ConfigMaps(instance.Namespace).Get(context.TODO(), "entrypoint."+redisv1beta2.GroupVersion.Group, metav1.GetOptions{}); err != nil {
+		return intctrlutil.RequeueWithError(ctx, err, "failed to get redis ConfigMap entrypoint."+redisv1beta2.GroupVersion.Group)
+	}
+	if _, found := instance.ObjectMeta.GetAnnotations()[redisv1beta2.GroupVersion.Group+"/skip-reconcile"]; found {
 		log.FromContext(ctx).Info("found skip reconcile annotation", "namespace", instance.Namespace, "name", instance.Name)
 		return intctrlutil.RequeueAfter(ctx, time.Second*10, "found skip reconcile annotation")
 	}
@@ -155,12 +174,8 @@ func (r *Reconciler) reconcileService(ctx context.Context, instance *redisv1beta
 func (r *Reconciler) reconcileRedis(ctx context.Context, instance *redisv1beta2.RedisReplication) (ctrl.Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	logger := log.FromContext(ctx)
 
 	if !r.IsStatefulSetReady(ctx, instance.Namespace, instance.Name) {
-		logger.Info("StatefulSet not ready yet, requeuing",
-			"namespace", instance.Namespace,
-			"name", instance.Name)
 		return intctrlutil.RequeueAfter(ctx, time.Second*60, "")
 	}
 

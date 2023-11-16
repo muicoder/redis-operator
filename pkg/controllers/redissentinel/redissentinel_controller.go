@@ -4,9 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/pkg/controllerutil"
 	"github.com/OT-CONTAINER-KIT/redis-operator/pkg/k8sutils"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -15,15 +17,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// RedisSentinelReconciler reconciles a RedisSentinel object
-type RedisSentinelReconciler struct {
+// Reconciler reconciles a RedisSentinel object
+type Reconciler struct {
 	client.Client
 	K8sClient          kubernetes.Interface
 	Dk8sClient         dynamic.Interface
 	ReplicationWatcher *intctrlutil.ResourceWatcher
 }
 
-func (r *RedisSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	instance := &redisv1beta2.RedisSentinel{}
 
 	err := r.Client.Get(ctx, req.NamespacedName, instance)
@@ -31,13 +33,13 @@ func (r *RedisSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return intctrlutil.RequeueWithErrorChecking(ctx, err, "failed to get RedisSentinel instance")
 	}
 
-	var reconcilers []reconciler
+	var reconcilers []reconcilement
 	if k8sutils.IsDeleted(instance) {
-		reconcilers = []reconciler{
+		reconcilers = []reconcilement{
 			{typ: "finalizer", rec: r.reconcileFinalizer},
 		}
 	} else {
-		reconcilers = []reconciler{
+		reconcilers = []reconcilement{
 			{typ: "annotation", rec: r.reconcileAnnotation},
 			{typ: "finalizer", rec: r.reconcileFinalizer},
 			{typ: "replication", rec: r.reconcileReplication},
@@ -56,18 +58,32 @@ func (r *RedisSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return result, nil
 		}
 	}
+	sts, err := r.K8sClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.Name+"-sentinel", metav1.GetOptions{})
+	if err == nil {
+		if sts.Status.ReadyReplicas == *instance.Spec.Size {
+			instance.Status.State = status.RedisSenitnelReady
+			instance.Status.Reason = status.ReadySentinelReason
+		} else {
+			instance.Status.State = status.RedisSentinelInitializing
+			instance.Status.Reason = status.InitializingSentinelReason
+		}
+	} else {
+		instance.Status.State = status.RedisSentinelFailed
+		instance.Status.Reason = status.FailedSentinelReason
+	}
+	r.Client.Status().Update(ctx, instance)
 
 	// DO NOT REQUEUE.
 	// only reconcile on resource(sentinel && watched redis replication) changes
 	return intctrlutil.Reconciled()
 }
 
-type reconciler struct {
+type reconcilement struct {
 	typ string
 	rec func(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error)
 }
 
-func (r *RedisSentinelReconciler) reconcileFinalizer(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
+func (r *Reconciler) reconcileFinalizer(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
 	if k8sutils.IsDeleted(instance) {
 		if err := k8sutils.HandleRedisSentinelFinalizer(ctx, r.Client, instance); err != nil {
 			return intctrlutil.RequeueWithError(ctx, err, "")
@@ -80,15 +96,18 @@ func (r *RedisSentinelReconciler) reconcileFinalizer(ctx context.Context, instan
 	return intctrlutil.Reconciled()
 }
 
-func (r *RedisSentinelReconciler) reconcileAnnotation(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
-	if _, found := instance.ObjectMeta.GetAnnotations()["redissentinel.opstreelabs.in/skip-reconcile"]; found {
+func (r *Reconciler) reconcileAnnotation(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
+	if _, err := r.K8sClient.CoreV1().ConfigMaps(instance.Namespace).Get(context.TODO(), "entrypoint."+redisv1beta2.GroupVersion.Group, metav1.GetOptions{}); err != nil {
+		return intctrlutil.RequeueWithError(ctx, err, "failed to get redis ConfigMap entrypoint."+redisv1beta2.GroupVersion.Group)
+	}
+	if _, found := instance.ObjectMeta.GetAnnotations()[redisv1beta2.GroupVersion.Group+"/skip-reconcile"]; found {
 		log.FromContext(ctx).Info("found skip reconcile annotation", "namespace", instance.Namespace, "name", instance.Name)
 		return intctrlutil.RequeueAfter(ctx, time.Second*10, "found skip reconcile annotation")
 	}
 	return intctrlutil.Reconciled()
 }
 
-func (r *RedisSentinelReconciler) reconcileReplication(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
+func (r *Reconciler) reconcileReplication(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
 	if instance.Spec.RedisSentinelConfig != nil && !k8sutils.IsRedisReplicationReady(ctx, r.K8sClient, r.Dk8sClient, instance) {
 		return intctrlutil.RequeueAfter(ctx, time.Second*10, "Redis Replication is specified but not ready")
 	}
@@ -106,24 +125,34 @@ func (r *RedisSentinelReconciler) reconcileReplication(ctx context.Context, inst
 			},
 		)
 	}
+	if len(instance.Spec.VolumeMount.MountPath) > 0 {
+		for _, mp := range instance.Spec.VolumeMount.MountPath {
+			if mp.MountPath == "/usr/local/bin/docker-entrypoint.sh" {
+				if _, ready := k8sutils.GetRedisReplicationMasterPort(ctx, false, r.K8sClient, instance); !ready {
+					log.FromContext(ctx).V(1).Info("Redis Replication nodes are not ready yet", instance.Spec.RedisSentinelConfig.RedisReplicationName)
+					return intctrlutil.RequeueAfter(ctx, time.Second*5, "")
+				}
+			}
+		}
+	}
 	return intctrlutil.Reconciled()
 }
 
-func (r *RedisSentinelReconciler) reconcileSentinel(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
+func (r *Reconciler) reconcileSentinel(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
 	if err := k8sutils.CreateRedisSentinel(ctx, r.K8sClient, instance, r.K8sClient, r.Dk8sClient); err != nil {
 		return intctrlutil.RequeueWithError(ctx, err, "")
 	}
 	return intctrlutil.Reconciled()
 }
 
-func (r *RedisSentinelReconciler) reconcilePDB(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
+func (r *Reconciler) reconcilePDB(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
 	if err := k8sutils.ReconcileSentinelPodDisruptionBudget(ctx, instance, instance.Spec.PodDisruptionBudget, r.K8sClient); err != nil {
 		return intctrlutil.RequeueWithError(ctx, err, "")
 	}
 	return intctrlutil.Reconciled()
 }
 
-func (r *RedisSentinelReconciler) reconcileService(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
+func (r *Reconciler) reconcileService(ctx context.Context, instance *redisv1beta2.RedisSentinel) (ctrl.Result, error) {
 	if err := k8sutils.CreateRedisSentinelService(ctx, instance, r.K8sClient); err != nil {
 		return intctrlutil.RequeueWithError(ctx, err, "")
 	}
@@ -131,7 +160,7 @@ func (r *RedisSentinelReconciler) reconcileService(ctx context.Context, instance
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *RedisSentinelReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&redisv1beta2.RedisSentinel{}).
 		Watches(&redisv1beta2.RedisReplication{}, r.ReplicationWatcher).

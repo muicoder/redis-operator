@@ -21,7 +21,6 @@ func getRedisPassword(ctx context.Context, client kubernetes.Interface, namespac
 	}
 	for key, value := range secretName.Data {
 		if key == secretKey {
-			logf.FromContext(ctx).Info("Secret key found in the secret", "secretKey", secretKey)
 			return strings.TrimSpace(string(value)), nil
 		}
 	}
@@ -62,7 +61,7 @@ func getRedisTLSConfig(ctx context.Context, client kubernetes.Interface, namespa
 		Certificates: []tls.Certificate{cert},
 		ServerName:   podName,
 		RootCAs:      tlsCaCertificates,
-		MinVersion:   tls.VersionTLS12,
+		MinVersion:   tls.VersionTLS10,
 		ClientAuth:   tls.NoClientCert,
 	}
 }
