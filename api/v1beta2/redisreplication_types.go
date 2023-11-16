@@ -2,6 +2,7 @@ package v1beta2
 
 import (
 	common "github.com/OT-CONTAINER-KIT/redis-operator/api"
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -38,14 +39,19 @@ func (cr *RedisReplicationSpec) GetReplicationCounts(t string) int32 {
 
 // RedisStatus defines the observed state of Redis
 type RedisReplicationStatus struct {
-	MasterNode string `json:"masterNode,omitempty"`
+	MasterNode string                       `json:"masterNode,omitempty"`
+	State      status.RedisReplicationState `json:"state,omitempty"`
+	Reason     string                       `json:"reason,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
+// +kubebuilder:printcolumn:name="ClusterSize",type=integer,JSONPath=`.spec.clusterSize`,description=Current cluster node count
 // +kubebuilder:printcolumn:name="Master",type="string",JSONPath=".status.masterNode"
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="The current state of the Redis Replication",priority=1
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.reason",description="The reason for the current state",priority=1
 
 // Redis is the Schema for the redis API
 type RedisReplication struct {

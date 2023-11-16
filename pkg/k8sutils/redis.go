@@ -382,7 +382,7 @@ func RedisClusterStatusHealth(ctx context.Context, client kubernetes.Interface, 
 	redisClient := configureRedisClient(ctx, client, cr, cr.ObjectMeta.Name+"-leader-0")
 	defer redisClient.Close()
 
-	cmd := []string{"redis-cli", "--cluster", "check", "127.0.0.1:6379"}
+	cmd := []string{"redis-cli", "--cluster", "check", "127.0.0.1:" + strconv.Itoa(*cr.Spec.Port)}
 	if cr.Spec.KubernetesConfig.ExistingPasswordSecret != nil {
 		pass, err := getRedisPassword(ctx, client, cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
 		if err != nil {
@@ -519,7 +519,7 @@ func getContainerID(ctx context.Context, client kubernetes.Interface, cr *redisv
 	targetContainer := -1
 	for containerID, tr := range pod.Spec.Containers {
 		log.FromContext(ctx).V(1).Info("Inspecting container", "Pod Name", podName, "Container ID", containerID, "Container Name", tr.Name)
-		if tr.Name == cr.ObjectMeta.Name+"-leader" {
+		if tr.Name == redisContainer {
 			targetContainer = containerID
 			log.FromContext(ctx).V(1).Info("Leader container found", "Container ID", containerID, "Container Name", tr.Name)
 			break
@@ -653,7 +653,7 @@ func CreateMasterSlaveReplication(ctx context.Context, client kubernetes.Interfa
 			redisClient := configureRedisReplicationClient(ctx, client, cr, masterPods[i])
 			defer redisClient.Close()
 			log.FromContext(ctx).V(1).Info("Setting the", "pod", masterPods[i], "to slave of", realMasterPod)
-			err := redisClient.SlaveOf(ctx, realMasterPodIP, "6379").Err()
+			err := redisClient.SlaveOf(ctx, realMasterPodIP, strconv.Itoa(redisPort)).Err()
 			if err != nil {
 				log.FromContext(ctx).Error(err, "Failed to set", "pod", masterPods[i], "to slave of", realMasterPod)
 				return err

@@ -29,7 +29,7 @@ func New(name string, options ...customFieldOption) *v1beta2.RedisCluster {
 	size := int32(3)
 	rc := &v1beta2.RedisCluster{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "redis.redis.opstreelabs.in/v1beta2",
+			APIVersion: redisv1beta2.GroupVersion.Group + "/v1beta2",
 			Kind:       "RedisCluster",
 		},
 		ObjectMeta: metav1.ObjectMeta{

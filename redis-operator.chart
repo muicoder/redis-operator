@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+set -e
+
+if ! grep "^$chart-$version.tgz$" ".cached.${0##*.}" >/dev/null 2>&1; then
+  #wget -qO- https://github.com/OT-CONTAINER-KIT/helm-charts/archive/refs/tags/$chart-$version.tar.gz | tar --strip-components=2 -xz helm-charts-$chart-$version/charts/$chart
+  wget -qO- https://github.com/OT-CONTAINER-KIT/helm-charts/releases/download/$chart-$version/$chart-$version.tgz | tar -xz
+  MANAGER_YAML="$(grep containers: -rl "$chart")"
+  if [ -z "$MANAGER_YAML" ]; then echo "manager.yaml error" && exit; fi
+  cat <<EOF >"$chart/Chart.yaml"
+apiVersion: v2
+appVersion: $version
+description: Provides easy redis setup definitions for Kubernetes services, and deployment.
+name: redis-operator
+version: $(date +%F | sed 's~-~.~g;s~\.0~.~g')
+EOF
+  echo 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 | base64 -d | tar -C "$chart" -xzv
+  readonly oem=redis.opstreelabs.in
+  OEM=${OEM:-$oem}
+  echo "OEM: $OEM"
+  echo "GRP: redis.$OEM for CRDs."
+  grep opstreelabs.in -rl | grep -E "(rbac.go|groupversion_info.go|/config/|chart/|$chart/|values.redis-operator.yaml)" | while read -r f; do
+    sed "s~redis.$oem~redis.$OEM~g;s~$oem~$OEM~g" <"$f" >"$f.repl"
+    mv "$f.repl" "$f"
+  done
+  sed 's~^  - services~  - services\n  - endpoints~' "$chart/templates/role.yaml" >f && mv f "$chart/templates/role.yaml"
+  make install
+  cp -a "$(grep 'kind: Redis$' -rl config/crd | grep "/redis.$OEM")" "$chart/crds/redis.yaml"
+  cp -a "$(grep 'kind: RedisReplication$' -rl config/crd | grep "/redis.$OEM")" "$chart/crds/redis-replication.yaml"
+  cp -a "$(grep 'kind: RedisSentinel$' -rl config/crd | grep "/redis.$OEM")" "$chart/crds/redis-sentinel.yaml"
+  cp -a "$(grep 'kind: RedisCluster$' -rl config/crd | grep "/redis.$OEM")" "$chart/crds/redis-cluster.yaml"
+  tar -zcf "$chart-$version.tgz" "$chart"
+  $(which rm) -rf "$chart"
+  echo "$chart-$version.tgz" >>".cached.${0##*.}"
+fi

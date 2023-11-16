@@ -62,7 +62,7 @@ func main() {
 	var enableWebhooks bool
 	var maxConcurrentReconciles int
 
-	flag.BoolVar(&enableWebhooks, "enable-webhooks", os.Getenv("ENABLE_WEBHOOKS") != "false", "Enable webhooks")
+	flag.BoolVar(&enableWebhooks, "enable-webhooks", os.Getenv("ENABLE_WEBHOOKS") == "true", "Enable webhooks")
 	flag.IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 1, "Max concurrent reconciles")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -91,7 +91,7 @@ func main() {
 		},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "6cab913b.redis.opstreelabs.in",
+		LeaderElectionID:       "6cab913b." + redisv1beta2.GroupVersion.Group,
 	}
 
 	if envMaxConcurrentReconciles, exists := os.LookupEnv("MAX_CONCURRENT_RECONCILES"); exists {
@@ -128,8 +128,9 @@ func main() {
 	}
 
 	if err = (&rediscontroller.Reconciler{
-		Client:    mgr.GetClient(),
-		K8sClient: k8sclient,
+		Client:     mgr.GetClient(),
+		K8sClient:  k8sclient,
+		Dk8sClient: dk8sClient,
 	}).SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Redis")
 		os.Exit(1)
@@ -154,7 +155,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "RedisReplication")
 		os.Exit(1)
 	}
-	if err = (&redissentinelcontroller.RedisSentinelReconciler{
+	if err = (&redissentinelcontroller.Reconciler{
 		Client:             mgr.GetClient(),
 		K8sClient:          k8sclient,
 		Dk8sClient:         dk8sClient,
