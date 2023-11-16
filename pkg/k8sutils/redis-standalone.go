@@ -129,7 +129,7 @@ func generateRedisStandaloneParams(cr *redisv1beta2.Redis) statefulSetParameters
 	if cr.Spec.ServiceAccountName != nil {
 		res.ServiceAccountName = cr.Spec.ServiceAccountName
 	}
-	if _, found := cr.ObjectMeta.GetAnnotations()[AnnotationKeyRecreateStatefulset]; found {
+	if _, found := cr.ObjectMeta.GetAnnotations()[redisv1beta2.GroupVersion.Group+"/recreate-statefulset"]; found {
 		res.RecreateStatefulSet = true
 	}
 	return res
@@ -182,7 +182,7 @@ func generateRedisStandaloneContainerParams(cr *redisv1beta2.Redis) containerPar
 	if cr.Spec.LivenessProbe != nil {
 		containerProp.LivenessProbe = cr.Spec.LivenessProbe
 	}
-	if cr.Spec.Storage != nil {
+	if cr.Spec.Storage.VolumeClaimTemplate.Spec.AccessModes != nil {
 		containerProp.PersistenceEnabled = &trueProperty
 	}
 	if cr.Spec.TLS != nil {
@@ -218,7 +218,7 @@ func generateRedisStandaloneInitContainerParams(cr *redisv1beta2.Redis) initCont
 			initcontainerProp.AdditionalVolume = cr.Spec.Storage.VolumeMount.Volume
 			initcontainerProp.AdditionalMountPath = cr.Spec.Storage.VolumeMount.MountPath
 		}
-		if cr.Spec.Storage != nil {
+		if cr.Spec.Storage.VolumeClaimTemplate.Spec.AccessModes != nil {
 			initcontainerProp.PersistenceEnabled = &trueProperty
 		}
 	}

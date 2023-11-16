@@ -62,7 +62,7 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var enableWebhooks bool
-	flag.BoolVar(&enableWebhooks, "enable-webhooks", os.Getenv("ENABLE_WEBHOOKS") != "false", "Enable webhooks")
+	flag.BoolVar(&enableWebhooks, "enable-webhooks", os.Getenv("ENABLE_WEBHOOKS") == "true", "Enable webhooks")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -90,7 +90,7 @@ func main() {
 		},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "6cab913b.redis.opstreelabs.in",
+		LeaderElectionID:       "6cab913b." + redisv1beta2.GroupVersion.Group,
 	}
 
 	if namespaces := strings.TrimSpace(os.Getenv("WATCH_NAMESPACE")); namespaces != "" {
@@ -121,8 +121,9 @@ func main() {
 	}
 
 	if err = (&redis.Reconciler{
-		Client:    mgr.GetClient(),
-		K8sClient: k8sclient,
+		Client:     mgr.GetClient(),
+		K8sClient:  k8sclient,
+		Dk8sClient: dk8sClient,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Redis")
 		os.Exit(1)
@@ -147,7 +148,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "RedisReplication")
 		os.Exit(1)
 	}
-	if err = (&redissentinel.RedisSentinelReconciler{
+	if err = (&redissentinel.Reconciler{
 		Client:             mgr.GetClient(),
 		K8sClient:          k8sclient,
 		Dk8sClient:         dk8sClient,
