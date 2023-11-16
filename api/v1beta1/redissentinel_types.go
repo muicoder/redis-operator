@@ -2,6 +2,7 @@ package v1beta1
 
 import (
 	common "github.com/OT-CONTAINER-KIT/redis-operator/api"
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -35,7 +36,10 @@ type RedisSentinelConfig struct {
 	common.RedisSentinelConfig `json:",inline"`
 }
 
-type RedisSentinelStatus struct{}
+type RedisSentinelStatus struct {
+	State  status.RedisSentinelState `json:"state,omitempty"`
+	Reason string                    `json:"reason,omitempty"`
+}
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

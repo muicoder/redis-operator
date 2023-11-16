@@ -3,10 +3,10 @@ name: Verify Codegen
 on:
   pull_request:
     branches:
-      - master
+      - masterNot
   push:
     branches:
-      - master
+      - masterNot
 
 jobs:
   verify-codegen:

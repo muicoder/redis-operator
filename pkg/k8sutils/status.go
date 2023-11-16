@@ -27,8 +27,8 @@ func UpdateRedisClusterStatus(ctx context.Context, cr *redisv1beta2.RedisCluster
 	}
 	cr.Status = newStatus
 	gvr := schema.GroupVersionResource{
-		Group:    "redis.redis.opstreelabs.in",
-		Version:  "v1beta2",
+		Group:    redisv1beta2.GroupVersion.Group,
+		Version:  redisv1beta2.GroupVersion.Version,
 		Resource: "redisclusters",
 	}
 	unstructuredObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(cr)

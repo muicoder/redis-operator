@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	common "github.com/OT-CONTAINER-KIT/redis-operator/api"
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -62,7 +63,14 @@ type RedisFollower struct {
 }
 
 // RedisClusterStatus defines the observed state of RedisCluster
-type RedisClusterStatus struct{}
+type RedisClusterStatus struct {
+	State  status.RedisClusterState `json:"state,omitempty"`
+	Reason string                   `json:"reason,omitempty"`
+	// +kubebuilder:default=0
+	ReadyLeaderReplicas int32 `json:"readyLeaderReplicas,omitempty"`
+	// +kubebuilder:default=0
+	ReadyFollowerReplicas int32 `json:"readyFollowerReplicas,omitempty"`
+}
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
