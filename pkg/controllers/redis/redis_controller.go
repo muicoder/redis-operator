@@ -20,6 +20,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/pkg/controllerutil"
 	"github.com/OT-CONTAINER-KIT/redis-operator/pkg/k8sutils"
@@ -51,7 +52,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		return intctrlutil.Reconciled()
 	}
-	if _, found := instance.ObjectMeta.GetAnnotations()["redis.opstreelabs.in/skip-reconcile"]; found {
+	if _, found := instance.ObjectMeta.GetAnnotations()[redisv1beta2.GroupVersion.Group+"/skip-reconcile"]; found {
 		return intctrlutil.RequeueAfter(ctx, time.Second*10, "found skip reconcile annotation")
 	}
 	if err = k8sutils.AddFinalizer(ctx, instance, k8sutils.RedisFinalizer, r.Client); err != nil {
@@ -64,6 +65,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	err = k8sutils.CreateStandaloneService(ctx, instance, r.K8sClient)
 	if err != nil {
 		return intctrlutil.RequeueWithError(ctx, err, "failed to create service")
+	}
+	if k8sutils.CheckRedisStandaloneReady(ctx, r.K8sClient, instance) {
+		err = k8sutils.UpdateRedisStandaloneStatus(ctx, instance, status.RedisStandaloneReady, status.ReadyStandaloneReason)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	} else {
+		err = k8sutils.UpdateRedisStandaloneStatus(ctx, instance, status.RedisStandaloneInitializing, status.InitializingStandaloneReason)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 	return intctrlutil.RequeueAfter(ctx, time.Second*10, "requeue after 10 seconds")
 }

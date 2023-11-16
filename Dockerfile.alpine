@@ -1,0 +1,3 @@
+FROM alpine:3.20
+ARG TARGETARCH
+COPY .git/$TARGETARCH/* /

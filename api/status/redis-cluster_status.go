@@ -6,7 +6,7 @@ const (
 	InitializingClusterLeaderReason   string = "RedisCluster is initializing leaders"
 	InitializingClusterFollowerReason string = "RedisCluster is initializing followers"
 	BootstrapClusterReason            string = "RedisCluster is bootstrapping"
-	ReadyClusterReason                string = "RedisCluster is ready"
+	ReadyClusterReason                string = "RedisCluster is healthy"
 )
 
 // Status Field of the Redis Cluster

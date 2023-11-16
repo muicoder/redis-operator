@@ -1,8 +1,11 @@
-module github.com/OT-CONTAINER-KIT/redis-operator
+module redis-operator
 
 go 1.22
 
+replace github.com/OT-CONTAINER-KIT/redis-operator => ./
+
 require (
+	github.com/OT-CONTAINER-KIT/redis-operator v0.18.1
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/banzaicloud/k8s-objectmatcher v1.8.0
 	github.com/go-logr/logr v1.4.2
@@ -12,9 +15,9 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/stretchr/testify v1.9.0
-	k8s.io/api v0.29.4
-	k8s.io/apimachinery v0.29.4
-	k8s.io/client-go v0.29.3
+	k8s.io/api v0.29.11
+	k8s.io/apimachinery v0.29.11
+	k8s.io/client-go v0.29.11
 	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
 	sigs.k8s.io/controller-runtime v0.17.2
 )
@@ -74,9 +77,9 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.29.3 // indirect
-	k8s.io/component-base v0.29.3 // indirect
-	k8s.io/klog/v2 v2.120.1 // indirect
+	k8s.io/apiextensions-apiserver v0.29.11 // indirect
+	k8s.io/component-base v0.29.11 // indirect
+	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20240322212309-b815d8309940 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect

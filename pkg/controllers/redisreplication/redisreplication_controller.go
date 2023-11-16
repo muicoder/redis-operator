@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/pkg/controllerutil"
 	"github.com/OT-CONTAINER-KIT/redis-operator/pkg/k8sutils"
@@ -41,7 +42,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		return intctrlutil.Reconciled()
 	}
-	if _, found := instance.ObjectMeta.GetAnnotations()["redisreplication.opstreelabs.in/skip-reconcile"]; found {
+	if _, found := instance.ObjectMeta.GetAnnotations()[redisv1beta2.GroupVersion.Group+"/skip-reconcile"]; found {
 		return intctrlutil.RequeueAfter(ctx, time.Second*10, "found skip reconcile annotation")
 	}
 	if err = k8sutils.AddFinalizer(ctx, instance, k8sutils.RedisReplicationFinalizer, r.Client); err != nil {
@@ -78,6 +79,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	if err = r.UpdateRedisPodRoleLabel(ctx, instance, realMaster); err != nil {
 		return intctrlutil.RequeueWithError(ctx, err, "")
+	}
+	if k8sutils.CheckRedisReplicationReady(ctx, r.K8sClient, instance) {
+		err = k8sutils.UpdateRedisReplicationStatus(ctx, instance, status.RedisReplicationReady, status.ReadyReplicationReason)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	} else {
+		err = k8sutils.UpdateRedisReplicationStatus(ctx, instance, status.RedisReplicationInitializing, status.InitializingReplicationReason)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 	return intctrlutil.RequeueAfter(ctx, time.Second*10, "")
 }

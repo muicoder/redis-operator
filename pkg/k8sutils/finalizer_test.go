@@ -553,7 +553,7 @@ func TestHandleRedisSentinelFinalizer(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := HandleRedisSentinelFinalizer(context.TODO(), tc.mockClient, tc.cr)
+			err := HandleRedisSentinelFinalizer(context.TODO(), k8sClientFake.NewSimpleClientset(), tc.mockClient, tc.cr)
 			if tc.expectError {
 				assert.Error(t, err)
 			} else {
