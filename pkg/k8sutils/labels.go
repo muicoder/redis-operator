@@ -90,8 +90,8 @@ func redisSentinelAsOwner(cr *redisv1beta2.RedisSentinel) metav1.OwnerReference 
 // generateStatefulSetsAnots generates and returns statefulsets annotations
 func generateStatefulSetsAnots(stsMeta metav1.ObjectMeta, ignoreAnnots []string) map[string]string {
 	anots := map[string]string{
-		"redis.opstreelabs.in":       "true",
-		"redis.opstreelabs.instance": stsMeta.GetName(),
+		redisv1beta2.GroupVersion.Group:               "true",
+		redisv1beta2.GroupVersion.Group + "/instance": stsMeta.GetName(),
 	}
 	for k, v := range stsMeta.GetAnnotations() {
 		anots[k] = v
@@ -115,10 +115,10 @@ func filterAnnotations(anots map[string]string, ignoreAnnots ...string) map[stri
 // generateServiceAnots generates and returns service annotations
 func generateServiceAnots(stsMeta metav1.ObjectMeta, additionalSvcAnnotations map[string]string, epp exporterPortProvider) map[string]string {
 	anots := map[string]string{
-		"redis.opstreelabs.in":       "true",
-		"redis.opstreelabs.instance": stsMeta.GetName(),
-		"prometheus.io/scrape":       "true",
-		"prometheus.io/port":         "9121",
+		redisv1beta2.GroupVersion.Group:               "true",
+		redisv1beta2.GroupVersion.Group + "/instance": stsMeta.GetName(),
+		"prometheus.io/scrape":                        "true",
+		"prometheus.io/port":                          "9121",
 	}
 	if exporterPort, ok := epp(); ok {
 		anots["prometheus.io/port"] = strconv.Itoa(exporterPort)

@@ -48,12 +48,12 @@ func NewPodAffiniytMutate(c client.Client, d *admission.Decoder, log logr.Logger
 }
 
 const (
-	podAnnotationsRedisClusterApp = "redis.opstreelabs.instance"
+	podAnnotationsRedisClusterApp = "rediscluster.redis.operator"
 	podLabelsPodName              = "statefulset.kubernetes.io/pod-name"
 	podLabelsRedisType            = "redis_setup_type"
 )
 
-const annotationKeyEnablePodAntiAffinity = "redisclusters.redis.redis.opstreelabs.in/role-anti-affinity"
+const annotationKeyEnablePodAntiAffinity = "rediscluster.redis.operator/role-anti-affinity"
 
 func (v *PodAntiAffiniytMutate) Handle(ctx context.Context, req admission.Request) admission.Response {
 	logger := v.logger.WithValues("Request.Namespace", req.Namespace, "Request.Name", req.Name)
