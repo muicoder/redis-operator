@@ -49,7 +49,7 @@ jobs:
 #   pull_request:
 #     types: [closed]
 #     branches:
-#       - main
+#       - masterNot
 
 # env:
 #   APPLICATION_NAME: redis-operator
