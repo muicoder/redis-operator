@@ -65,7 +65,7 @@ func generateRedisClusterParams(ctx context.Context, cr *redisv1beta2.RedisClust
 	}
 	if cr.Spec.Storage != nil {
 		res.PersistentVolumeClaim = cr.Spec.Storage.VolumeClaimTemplate
-		res.NodeConfVolume = cr.Spec.Storage.NodeConfVolume
+		res.NodeConfVolume = false
 		res.NodeConfPersistentVolumeClaim = cr.Spec.Storage.NodeConfVolumeClaimTemplate
 	}
 	if externalConfig != nil {
@@ -101,7 +101,7 @@ func generateRedisClusterInitContainerParams(cr *redisv1beta2.RedisCluster) init
 			initcontainerProp.AdditionalVolume = cr.Spec.Storage.VolumeMount.Volume
 			initcontainerProp.AdditionalMountPath = cr.Spec.Storage.VolumeMount.MountPath
 		}
-		if cr.Spec.Storage != nil {
+		if cr.Spec.Storage.VolumeClaimTemplate.Spec.AccessModes != nil {
 			initcontainerProp.PersistenceEnabled = &trueProperty
 		}
 	}
@@ -201,7 +201,7 @@ func generateRedisClusterContainerParams(ctx context.Context, cl kubernetes.Inte
 	if livenessProbeDef != nil {
 		containerProp.LivenessProbe = livenessProbeDef
 	}
-	if cr.Spec.Storage != nil && cr.Spec.PersistenceEnabled != nil && *cr.Spec.PersistenceEnabled {
+	if cr.Spec.Storage.VolumeClaimTemplate.Spec.AccessModes != nil && cr.Spec.PersistenceEnabled != nil && *cr.Spec.PersistenceEnabled {
 		containerProp.PersistenceEnabled = &trueProperty
 	} else {
 		containerProp.PersistenceEnabled = &falseProperty

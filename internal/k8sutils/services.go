@@ -17,7 +17,7 @@ const (
 	redisPort             = 6379
 	sentinelPort          = 26379
 	redisExporterPort     = 9121
-	redisExporterPortName = "redis-exporter"
+	redisExporterPortName = "metrics"
 )
 
 var serviceType corev1.ServiceType
@@ -43,7 +43,13 @@ func generateServiceDef(serviceMeta metav1.ObjectMeta, epp exporterPortProvider,
 		Spec: corev1.ServiceSpec{
 			Type:      generateServiceType(serviceType),
 			ClusterIP: "",
-			Selector:  util.CopyMap(serviceMeta.GetLabels()),
+			Selector: func() map[string]string {
+				lbls := make(map[string]string)
+				for k, v := range serviceMeta.GetLabels() {
+					lbls[k] = v
+				}
+				return lbls
+			}(),
 			Ports: []corev1.ServicePort{
 				{
 					Name:       PortName,
@@ -56,6 +62,8 @@ func generateServiceDef(serviceMeta metav1.ObjectMeta, epp exporterPortProvider,
 	}
 	if headless {
 		service.Spec.ClusterIP = "None"
+	} else {
+		service.Labels["argocd.argoproj.io/redis-operator.instance"] = service.Labels["role"] + "." + service.Name
 	}
 	if exporterPort, ok := epp(); ok {
 		redisExporterService := enableMetricsPort(exporterPort)

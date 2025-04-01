@@ -102,7 +102,7 @@ func createManagerCommand() *cobra.Command {
 				},
 				HealthProbeBindAddress: probeAddr,
 				LeaderElection:         enableLeaderElection,
-				LeaderElectionID:       "6cab913b.redis.opstreelabs.in",
+				LeaderElectionID:       "6cab913b." + redisv1beta2.GroupVersion.Group,
 			}
 
 			// Use env package to get max concurrent reconciles
@@ -136,8 +136,9 @@ func createManagerCommand() *cobra.Command {
 			}
 
 			if err = (&rediscontroller.Reconciler{
-				Client:    mgr.GetClient(),
-				K8sClient: k8sclient,
+				Client:     mgr.GetClient(),
+				K8sClient:  k8sclient,
+				Dk8sClient: dk8sClient,
 			}).SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles}); err != nil {
 				setupLog.Error(err, "unable to create controller", "controller", "Redis")
 				return err
@@ -162,7 +163,7 @@ func createManagerCommand() *cobra.Command {
 				setupLog.Error(err, "unable to create controller", "controller", "RedisReplication")
 				return err
 			}
-			if err = (&redissentinelcontroller.RedisSentinelReconciler{
+			if err = (&redissentinelcontroller.Reconciler{
 				Client:             mgr.GetClient(),
 				K8sClient:          k8sclient,
 				Dk8sClient:         dk8sClient,
