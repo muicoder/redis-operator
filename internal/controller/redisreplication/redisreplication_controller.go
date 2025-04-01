@@ -4,12 +4,14 @@ import (
 	"context"
 	"time"
 
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/internal/controllerutil"
 	"github.com/OT-CONTAINER-KIT/redis-operator/internal/k8sutils"
 	"github.com/OT-CONTAINER-KIT/redis-operator/internal/monitoring"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -35,13 +37,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return intctrlutil.RequeueWithErrorChecking(ctx, err, "failed to get RedisReplication instance")
 	}
 
-	var reconcilers []reconciler
+	var reconcilers []reconcilement
 	if k8sutils.IsDeleted(instance) {
-		reconcilers = []reconciler{
+		reconcilers = []reconcilement{
 			{typ: "finalizer", rec: r.reconcileFinalizer},
 		}
 	} else {
-		reconcilers = []reconciler{
+		reconcilers = []reconcilement{
 			{typ: "annotation", rec: r.reconcileAnnotation},
 			{typ: "finalizer", rec: r.reconcileFinalizer},
 			{typ: "statefulset", rec: r.reconcileStatefulSet},
@@ -54,13 +56,25 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	for _, reconciler := range reconcilers {
 		result, err := reconciler.rec(ctx, instance)
 		if err != nil {
+			if instance.Status.State != status.RedisReplicationFailed {
+				instance.Status.State = status.RedisReplicationFailed
+				instance.Status.Reason = status.FailedReplicationReason
+				r.Client.Status().Update(ctx, instance)
+			}
 			return intctrlutil.RequeueWithError(ctx, err, "")
 		}
 		if result.Requeue {
+			if instance.Status.State != status.RedisReplicationInitializing {
+				instance.Status.State = status.RedisReplicationInitializing
+				instance.Status.Reason = status.InitializingReplicationReason
+				r.Client.Status().Update(ctx, instance)
+			}
 			return result, nil
 		}
 	}
-
+	instance.Status.State = status.RedisReplicationReady
+	instance.Status.Reason = status.ReadyReplicationReason
+	r.Client.Status().Update(ctx, instance)
 	return intctrlutil.RequeueAfter(ctx, time.Second*10, "")
 }
 
@@ -114,7 +128,7 @@ func (r *Reconciler) UpdateRedisPodRoleLabel(ctx context.Context, cr *redisv1bet
 	return nil
 }
 
-type reconciler struct {
+type reconcilement struct {
 	typ string
 	rec func(ctx context.Context, instance *redisv1beta2.RedisReplication) (ctrl.Result, error)
 }
@@ -133,7 +147,10 @@ func (r *Reconciler) reconcileFinalizer(ctx context.Context, instance *redisv1be
 }
 
 func (r *Reconciler) reconcileAnnotation(ctx context.Context, instance *redisv1beta2.RedisReplication) (ctrl.Result, error) {
-	if value, found := instance.ObjectMeta.GetAnnotations()["redisreplication.opstreelabs.in/skip-reconcile"]; found && value == "true" {
+	if _, err := r.K8sClient.CoreV1().ConfigMaps(instance.Namespace).Get(context.TODO(), "entrypoint."+redisv1beta2.GroupVersion.Group, metav1.GetOptions{}); err != nil {
+		return intctrlutil.RequeueWithError(ctx, err, "failed to get redis ConfigMap entrypoint."+redisv1beta2.GroupVersion.Group)
+	}
+	if value, found := instance.ObjectMeta.GetAnnotations()["skip-reconcile"]; found && value == "true" {
 		log.FromContext(ctx).Info("found skip reconcile annotation", "namespace", instance.Namespace, "name", instance.Name)
 		return intctrlutil.RequeueAfter(ctx, time.Second*10, "found skip reconcile annotation")
 	}

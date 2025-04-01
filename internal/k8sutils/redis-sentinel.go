@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
+	commonapi "github.com/OT-CONTAINER-KIT/redis-operator/api"
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
 	"github.com/OT-CONTAINER-KIT/redis-operator/internal/util"
 	corev1 "k8s.io/api/core/v1"
@@ -30,6 +32,11 @@ type RedisSentinelSTS struct {
 // RedisSentinelService is a interface to call Redis Service function
 type RedisSentinelService struct {
 	RedisServiceRole string
+}
+
+type RedisReplicationInfo struct {
+	MasterPort   string
+	MasterSecret *commonapi.ExistingPasswordSecret
 }
 
 type RedisReplicationObject struct {
@@ -200,6 +207,10 @@ func generateRedisSentinelContainerParams(ctx context.Context, client kubernetes
 		if cr.Spec.RedisExporter.EnvVars != nil {
 			containerProp.RedisExporterEnv = cr.Spec.RedisExporter.EnvVars
 		}
+
+		if cr.Spec.RedisExporter.Port != nil {
+			containerProp.RedisExporterPort = cr.Spec.RedisExporter.Port
+		}
 	}
 	if readinessProbeDef != nil {
 		containerProp.ReadinessProbe = readinessProbeDef
@@ -232,9 +243,8 @@ func (service RedisSentinelService) CreateRedisSentinelService(ctx context.Conte
 	} else {
 		epp = disableMetrics
 	}
-	annotations := generateServiceAnots(cr.ObjectMeta, nil, epp)
-	objectMetaInfo := generateObjectMetaInformation(serviceName, cr.Namespace, labels, annotations)
-	headlessObjectMetaInfo := generateObjectMetaInformation(serviceName+"-headless", cr.Namespace, labels, annotations)
+	objectMetaInfo := generateObjectMetaInformation(serviceName, cr.Namespace, labels, generateServiceAnots(cr.ObjectMeta, nil, epp))
+	headlessObjectMetaInfo := generateObjectMetaInformation(serviceName+"-headless", cr.Namespace, labels, generateServiceAnots(cr.ObjectMeta, cr.Spec.KubernetesConfig.GetHeadlessServiceAnnotations(), epp))
 	additionalObjectMetaInfo := generateObjectMetaInformation(serviceName+"-additional", cr.Namespace, labels, generateServiceAnots(cr.ObjectMeta, cr.Spec.KubernetesConfig.GetServiceAnnotations(), epp))
 
 	err := CreateOrUpdateService(ctx, cr.Namespace, headlessObjectMetaInfo, redisSentinelAsOwner(cr), disableMetrics, true, "ClusterIP", sentinelPort, cl)
@@ -248,20 +258,22 @@ func (service RedisSentinelService) CreateRedisSentinelService(ctx context.Conte
 		return err
 	}
 
-	err = CreateOrUpdateService(
-		ctx,
-		cr.Namespace,
-		additionalObjectMetaInfo,
-		redisSentinelAsOwner(cr),
-		disableMetrics,
-		false,
-		cr.Spec.KubernetesConfig.GetServiceType(),
-		sentinelPort,
-		cl,
-	)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Cannot create additional service for Redis", "Setup.Type", service.RedisServiceRole)
-		return err
+	if cr.Spec.KubernetesConfig.ShouldCreateAdditionalService() {
+		err = CreateOrUpdateService(
+			ctx,
+			cr.Namespace,
+			additionalObjectMetaInfo,
+			redisSentinelAsOwner(cr),
+			disableMetrics,
+			false,
+			cr.Spec.KubernetesConfig.GetServiceType(),
+			sentinelPort,
+			cl,
+		)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "Cannot create additional service for Redis", "Setup.Type", service.RedisServiceRole)
+			return err
+		}
 	}
 	return nil
 }
@@ -270,6 +282,7 @@ func getSentinelEnvVariable(ctx context.Context, client kubernetes.Interface, cr
 	if cr.Spec.RedisSentinelConfig == nil {
 		return &[]corev1.EnvVar{}, nil
 	}
+	redisReplicationInfo := getRedisReplicationInfo(ctx, client, cr, dcl)
 
 	var IP string
 	if cr.Spec.RedisSentinelConfig.ResolveHostnames == "yes" {
@@ -292,8 +305,12 @@ func getSentinelEnvVariable(ctx context.Context, client kubernetes.Interface, cr
 			Value: IP,
 		},
 		{
-			Name:  "PORT",
-			Value: cr.Spec.RedisSentinelConfig.RedisPort,
+			Name:  "MASTER_PORT",
+			Value: redisReplicationInfo.MasterPort,
+		},
+		{
+			Name:  "REPLICATION",
+			Value: cr.Spec.RedisSentinelConfig.RedisReplicationName,
 		},
 		{
 			Name:  "QUORUM",
@@ -320,12 +337,21 @@ func getSentinelEnvVariable(ctx context.Context, client kubernetes.Interface, cr
 			Value: cr.Spec.RedisSentinelConfig.AnnounceHostnames,
 		},
 	}
-
-	if cr.Spec.RedisSentinelConfig != nil && cr.Spec.RedisSentinelConfig.RedisReplicationPassword != nil {
-		*envVar = append(*envVar, corev1.EnvVar{
-			Name:      "MASTER_PASSWORD",
-			ValueFrom: cr.Spec.RedisSentinelConfig.RedisReplicationPassword,
-		})
+	if cr.Spec.RedisSentinelConfig.RedisReplicationPassword != nil || redisReplicationInfo.MasterSecret != nil {
+		*envVar = append(*envVar, []corev1.EnvVar{
+			{
+				Name: "MASTER_PASSWORD",
+				ValueFrom: func() *corev1.EnvVarSource {
+					if cr.Spec.RedisSentinelConfig.RedisReplicationPassword != nil {
+						return cr.Spec.RedisSentinelConfig.RedisReplicationPassword
+					}
+					return &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: *redisReplicationInfo.MasterSecret.Name},
+						Key:                  *redisReplicationInfo.MasterSecret.Key,
+					}}
+				}(),
+			},
+		}...)
 	}
 	return envVar, nil
 }
@@ -344,7 +370,7 @@ func getRedisReplicationMasterPod(ctx context.Context, client kubernetes.Interfa
 
 	// Get Request on Dynamic Client
 	customObject, err := dcl.Resource(schema.GroupVersionResource{
-		Group:    "redis.redis.opstreelabs.in",
+		Group:    redisv1beta2.GroupVersion.Group,
 		Version:  "v1beta2",
 		Resource: "redisreplications",
 	}).Namespace(replicationNamespace).Get(context.TODO(), replicationName, v1.GetOptions{})
@@ -392,6 +418,64 @@ func getRedisReplicationMasterPod(ctx context.Context, client kubernetes.Interfa
 		PodName:   realMasterPod,
 		Namespace: replicationNamespace,
 	}
+}
+
+func GetRedisReplicationMasterPort(ctx context.Context, ready bool, client kubernetes.Interface, cr *redisv1beta2.RedisSentinel) (string, bool) {
+	RedisReplicationName := cr.Spec.RedisSentinelConfig.RedisReplicationName
+	ReplicationEP, _ := client.CoreV1().Endpoints(cr.Namespace).Get(context.TODO(), RedisReplicationName+"-master", v1.GetOptions{})
+	for _, addresses := range ReplicationEP.Subsets {
+		if len(addresses.Addresses) != 0 {
+			for _, port := range addresses.Ports {
+				if port.Name == "redis-client" {
+					return strconv.Itoa(int(port.Port)), true
+				}
+			}
+		}
+	}
+	return cr.Spec.RedisSentinelConfig.RedisPort, ready
+}
+
+func getRedisReplicationInfo(ctx context.Context, client kubernetes.Interface, cr *redisv1beta2.RedisSentinel, dcl dynamic.Interface) *RedisReplicationInfo {
+	replicationName := cr.Spec.RedisSentinelConfig.RedisReplicationName
+	replicationNamespace := cr.Namespace
+
+	var replicationInstance redisv1beta2.RedisReplication
+
+	// Get Request on Dynamic Client
+	customObject, err := dcl.Resource(schema.GroupVersionResource{
+		Group:    redisv1beta2.GroupVersion.Group,
+		Version:  "v1beta2",
+		Resource: "redisreplications",
+	}).Namespace(replicationNamespace).Get(context.TODO(), replicationName, v1.GetOptions{})
+
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to Execute Get Request", "replication name", replicationName, "namespace", replicationNamespace)
+		return nil
+	} else {
+		log.FromContext(ctx).V(1).Info("Successfully Execute the Get Request", "replication name", replicationName, "namespace", replicationNamespace)
+	}
+
+	// Marshal CustomObject to JSON
+	replicationJSON, err := customObject.MarshalJSON()
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed To Load JSON")
+		return nil
+	}
+
+	// Unmarshal The JSON on Object
+	if err := json.Unmarshal(replicationJSON, &replicationInstance); err != nil {
+		log.FromContext(ctx).Error(err, "Failed To Unmarshal JSON over the Object")
+		return nil
+	}
+
+	replicationInfo := &RedisReplicationInfo{}
+
+	MasterPort, _ := GetRedisReplicationMasterPort(ctx, true, client, cr)
+	replicationInfo.MasterPort = MasterPort
+	if replicationInstance.Spec.KubernetesConfig.ExistingPasswordSecret != nil {
+		replicationInfo.MasterSecret = replicationInstance.Spec.KubernetesConfig.ExistingPasswordSecret
+	}
+	return replicationInfo
 }
 
 func getRedisReplicationMasterIP(ctx context.Context, client kubernetes.Interface, cr *redisv1beta2.RedisSentinel, dcl dynamic.Interface) string {
