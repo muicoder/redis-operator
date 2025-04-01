@@ -20,9 +20,12 @@ import (
 	"context"
 	"time"
 
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/pkg/controllerutil"
 	"github.com/OT-CONTAINER-KIT/redis-operator/pkg/k8sutils"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,7 +35,8 @@ import (
 // Reconciler reconciles a Redis object
 type Reconciler struct {
 	client.Client
-	K8sClient kubernetes.Interface
+	K8sClient  kubernetes.Interface
+	Dk8sClient dynamic.Interface
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -48,7 +52,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		return intctrlutil.Reconciled()
 	}
-	if value, found := instance.ObjectMeta.GetAnnotations()["redis.opstreelabs.in/skip-reconcile"]; found && value == "true" {
+	if _, err := r.K8sClient.CoreV1().ConfigMaps(instance.Namespace).Get(context.TODO(), "entrypoint."+redisv1beta2.GroupVersion.Group, metav1.GetOptions{}); err != nil {
+		return intctrlutil.RequeueWithError(ctx, err, "failed to get redis ConfigMap entrypoint."+redisv1beta2.GroupVersion.Group)
+	}
+	if value, found := instance.ObjectMeta.GetAnnotations()["skip-reconcile"]; found && value == "true" {
 		return intctrlutil.RequeueAfter(ctx, time.Second*10, "found skip reconcile annotation")
 	}
 	if err = k8sutils.AddFinalizer(ctx, instance, k8sutils.RedisFinalizer, r.Client); err != nil {
@@ -62,7 +69,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		return intctrlutil.RequeueWithError(ctx, err, "failed to create service")
 	}
-	return intctrlutil.RequeueAfter(ctx, time.Second*10, "requeue after 10 seconds")
+	sts, err := r.K8sClient.AppsV1().StatefulSets(instance.Namespace).Get(context.TODO(), instance.Name, metav1.GetOptions{})
+	if err == nil {
+		if sts.Status.ReadyReplicas == 1 {
+			instance.Status.State = status.RedisStandaloneReady
+			instance.Status.Reason = status.ReadyStandaloneReason
+		} else {
+			instance.Status.State = status.RedisStandaloneInitializing
+			instance.Status.Reason = status.InitializingStandaloneReason
+		}
+	} else {
+		instance.Status.State = status.RedisStandaloneFailed
+		instance.Status.Reason = status.FailedStandaloneReason
+	}
+	r.Client.Status().Update(ctx, instance)
+	return intctrlutil.RequeueAfter(ctx, time.Second*10, "")
 }
 
 // SetupWithManager sets up the controller with the Manager.

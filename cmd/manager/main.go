@@ -106,7 +106,7 @@ func createManagerCommand() *cobra.Command {
 				},
 				HealthProbeBindAddress: probeAddr,
 				LeaderElection:         enableLeaderElection,
-				LeaderElectionID:       "6cab913b.redis.opstreelabs.in",
+				LeaderElectionID:       "6cab913b." + redisv1beta2.GroupVersion.Group,
 			}
 
 			if envMaxConcurrentReconciles, exists := os.LookupEnv("MAX_CONCURRENT_RECONCILES"); exists {
@@ -143,8 +143,9 @@ func createManagerCommand() *cobra.Command {
 			}
 
 			if err = (&rediscontroller.Reconciler{
-				Client:    mgr.GetClient(),
-				K8sClient: k8sclient,
+				Client:     mgr.GetClient(),
+				K8sClient:  k8sclient,
+				Dk8sClient: dk8sClient,
 			}).SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles}); err != nil {
 				setupLog.Error(err, "unable to create controller", "controller", "Redis")
 				return err
@@ -169,7 +170,7 @@ func createManagerCommand() *cobra.Command {
 				setupLog.Error(err, "unable to create controller", "controller", "RedisReplication")
 				return err
 			}
-			if err = (&redissentinelcontroller.RedisSentinelReconciler{
+			if err = (&redissentinelcontroller.Reconciler{
 				Client:             mgr.GetClient(),
 				K8sClient:          k8sclient,
 				Dk8sClient:         dk8sClient,
@@ -226,7 +227,7 @@ func createManagerCommand() *cobra.Command {
 	cmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	cmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	cmd.Flags().BoolVar(&enableLeaderElection, "leader-elect", false, "Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
-	cmd.Flags().BoolVar(&enableWebhooks, "enable-webhooks", os.Getenv("ENABLE_WEBHOOKS") != "false", "Enable webhooks")
+	cmd.Flags().BoolVar(&enableWebhooks, "enable-webhooks", os.Getenv("ENABLE_WEBHOOKS") == "true", "Enable webhooks")
 	cmd.Flags().IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 1, "Max concurrent reconciles")
 	cmd.Flags().StringVar(&featureGatesString, "feature-gates", os.Getenv("FEATURE_GATES"), "A set of key=value pairs that describe feature gates for alpha/experimental features. "+
 		"Options are:\n  GenerateConfigInInitContainer=true|false: enables using init container for config generation")

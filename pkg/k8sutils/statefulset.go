@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	redisv1beta2 "github.com/OT-CONTAINER-KIT/redis-operator/api/v1beta2"
-	"github.com/OT-CONTAINER-KIT/redis-operator/internal/image"
 	"github.com/OT-CONTAINER-KIT/redis-operator/pkg/features"
 	"github.com/OT-CONTAINER-KIT/redis-operator/pkg/util"
 	"github.com/banzaicloud/k8s-objectmatcher/patch"
@@ -89,7 +88,8 @@ func (s *StatefulSetService) GetStatefulSetReplicas(ctx context.Context, namespa
 }
 
 const (
-	redisExporterContainer = "redis-exporter"
+	redisContainer         = "redis"
+	redisExporterContainer = "exporter"
 )
 
 // statefulSetParameters will define statefulsets input params
@@ -406,7 +406,7 @@ func generateContainerDef(name string, containerParams containerParameters, clus
 	enableAuth := containerParams.EnabledPassword != nil && *containerParams.EnabledPassword
 	containerDefinition := []corev1.Container{
 		{
-			Name:            name,
+			Name:            redisContainer,
 			Image:           containerParams.Image,
 			ImagePullPolicy: containerParams.ImagePullPolicy,
 			SecurityContext: containerParams.SecurityContext,
@@ -492,6 +492,14 @@ func generateContainerDef(name string, containerParams containerParameters, clus
 		containerDefinition[0].Env = append(containerDefinition[0].Env, *containerParams.AdditionalEnvVariable...)
 	}
 
+	for ci, c := range containerDefinition {
+		if len(c.Env) > 0 {
+			envVars := containerDefinition[ci].Env
+			sort.SliceStable(envVars, func(i, j int) bool {
+				return envVars[i].Name < envVars[j].Name
+			})
+		}
+	}
 	return containerDefinition
 }
 
@@ -557,7 +565,7 @@ func generateInitContainerDef(role, name string, initcontainerParams initContain
 	if features.Enabled(features.GenerateConfigInInitContainer) {
 		container := corev1.Container{
 			Name:            "init-config",
-			Image:           image.GetOperatorImage(),
+			Image:           containerParams.Image,
 			ImagePullPolicy: corev1.PullIfNotPresent,
 			Command:         []string{"/operator", "agent"},
 			Env: getEnvironmentVariables(
@@ -619,22 +627,12 @@ func GenerateTLSEnvironmentVariables(tlsconfig *redisv1beta2.TLSConfig) []corev1
 		tlsCertKey = tlsconfig.KeyFile
 	}
 
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "TLS_MODE",
-		Value: "true",
-	})
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "REDIS_TLS_CA_KEY",
-		Value: path.Join(root, caCert),
-	})
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "REDIS_TLS_CERT",
-		Value: path.Join(root, tlsCert),
-	})
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "REDIS_TLS_CERT_KEY",
-		Value: path.Join(root, tlsCertKey),
-	})
+	envVars = []corev1.EnvVar{
+		{Name: "TLS_MODE", Value: "true"},
+		{Name: "REDIS_TLS_CA_KEY", Value: path.Join(root, caCert)},
+		{Name: "REDIS_TLS_CERT", Value: path.Join(root, tlsCert)},
+		{Name: "REDIS_TLS_CERT_KEY", Value: path.Join(root, tlsCertKey)},
+	}
 	return envVars
 }
 
@@ -665,22 +663,12 @@ func getExporterEnvironmentVariables(params containerParameters) []corev1.EnvVar
 	var envVars []corev1.EnvVar
 	redisHost := "redis://localhost:"
 	if params.TLSConfig != nil {
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "REDIS_EXPORTER_TLS_CLIENT_KEY_FILE",
-			Value: "/tls/tls.key",
-		})
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "REDIS_EXPORTER_TLS_CLIENT_CERT_FILE",
-			Value: "/tls/tls.crt",
-		})
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "REDIS_EXPORTER_TLS_CA_CERT_FILE",
-			Value: "/tls/ca.crt",
-		})
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "REDIS_EXPORTER_SKIP_TLS_VERIFICATION",
-			Value: "true",
-		})
+		envVars = []corev1.EnvVar{
+			{Name: "REDIS_EXPORTER_SKIP_TLS_VERIFICATION", Value: "true"},
+			{Name: "REDIS_EXPORTER_TLS_CA_CERT_FILE", Value: "/tls/ca.crt"},
+			{Name: "REDIS_EXPORTER_TLS_CLIENT_CERT_FILE", Value: "/tls/tls.crt"},
+			{Name: "REDIS_EXPORTER_TLS_CLIENT_KEY_FILE", Value: "/tls/tls.key"},
+		}
 		redisHost = "rediss://localhost:"
 	}
 	if params.RedisExporterPort != nil {
@@ -757,6 +745,12 @@ func getVolumeMount(name string, persistenceEnabled *bool, clusterMode bool, nod
 			Name:      "external-config",
 			MountPath: "/etc/redis/external.conf.d",
 		})
+	} else {
+		for index, mp := range mountpath {
+			if mp.MountPath == "/usr/local/bin/docker-entrypoint.sh" {
+				mountpath = append(mountpath[:index], mountpath[index+1:]...)
+			}
+		}
 	}
 
 	if features.Enabled(features.GenerateConfigInInitContainer) {
@@ -776,23 +770,15 @@ func getProbeInfo(probe *corev1.Probe, sentinel, enableTLS, enableAuth bool) *co
 	if probe.ProbeHandler.Exec == nil && probe.ProbeHandler.HTTPGet == nil && probe.ProbeHandler.TCPSocket == nil && probe.ProbeHandler.GRPC == nil {
 		healthChecker := []string{
 			"redis-cli",
-			"-h", "$(hostname)",
-		}
-		if sentinel {
-			healthChecker = append(healthChecker, "-p", "${SENTINEL_PORT}")
-		} else {
-			healthChecker = append(healthChecker, "-p", "${REDIS_PORT}")
-		}
-		if enableAuth {
-			healthChecker = append(healthChecker, "-a", "${REDIS_PASSWORD}")
+			"-p", "$(SERVER_PORT)",
 		}
 		if enableTLS {
-			healthChecker = append(healthChecker, "--tls", "--cert", "${REDIS_TLS_CERT}", "--key", "${REDIS_TLS_CERT_KEY}", "--cacert", "${REDIS_TLS_CA_KEY}")
+			healthChecker = append(healthChecker, "--tls", "--cert", "$(REDIS_TLS_CERT)", "--key", "$(REDIS_TLS_CERT_KEY)", "--cacert", "$(REDIS_TLS_CA_KEY)")
 		}
 		healthChecker = append(healthChecker, "ping")
 		probe.ProbeHandler = corev1.ProbeHandler{
 			Exec: &corev1.ExecAction{
-				Command: []string{"sh", "-c", strings.Join(healthChecker, " ")},
+				Command: healthChecker,
 			},
 		}
 	}
@@ -806,6 +792,7 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 ) []corev1.EnvVar {
 	envVars := []corev1.EnvVar{
 		{Name: "SERVER_MODE", Value: role},
+		{Name: "SERVER_PORT", Value: strconv.Itoa(*port)},
 		{Name: "SETUP_MODE", Value: role},
 	}
 
@@ -814,23 +801,6 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 			Name:  "REDIS_MAJOR_VERSION",
 			Value: *clusterVersion,
 		})
-	}
-
-	var redisHost string
-	if role == "sentinel" {
-		redisHost = "redis://localhost:" + strconv.Itoa(sentinelPort)
-		if port != nil {
-			envVars = append(envVars, corev1.EnvVar{
-				Name: "SENTINEL_PORT", Value: strconv.Itoa(*port),
-			})
-		}
-	} else {
-		redisHost = "redis://localhost:" + strconv.Itoa(redisPort)
-		if port != nil {
-			envVars = append(envVars, corev1.EnvVar{
-				Name: "REDIS_PORT", Value: strconv.Itoa(*port),
-			})
-		}
 	}
 
 	if tlsConfig != nil {
@@ -844,11 +814,6 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 		})
 	}
 
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "REDIS_ADDR",
-		Value: redisHost,
-	})
-
 	if enabledPassword != nil && *enabledPassword {
 		envVars = append(envVars, corev1.EnvVar{
 			Name: "REDIS_PASSWORD",
@@ -860,6 +825,10 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 					Key: *secretKey,
 				},
 			},
+		})
+		envVars = append(envVars, corev1.EnvVar{
+			Name:      "REDISCLI_AUTH",
+			ValueFrom: envVars[len(envVars)-1].ValueFrom,
 		})
 	}
 	if persistenceEnabled != nil && *persistenceEnabled {
