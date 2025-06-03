@@ -34,7 +34,6 @@ func getRedisServerIP(ctx context.Context, client kubernetes.Interface, redisInf
 
 	redisPod, err := client.CoreV1().Pods(redisInfo.Namespace).Get(context.TODO(), redisInfo.PodName, metav1.GetOptions{})
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Error in getting Redis pod IP", "namespace", redisInfo.Namespace, "podName", redisInfo.PodName)
 		return ""
 	}
 
@@ -522,7 +521,7 @@ func getContainerID(ctx context.Context, client kubernetes.Interface, cr *rcvb2.
 	targetContainer := -1
 	for containerID, tr := range pod.Spec.Containers {
 		log.FromContext(ctx).V(1).Info("Inspecting container", "Pod Name", podName, "Container ID", containerID, "Container Name", tr.Name)
-		if tr.Name == cr.ObjectMeta.Name+"-leader" {
+		if tr.Name == redisContainer {
 			targetContainer = containerID
 			log.FromContext(ctx).V(1).Info("Leader container found", "Container ID", containerID, "Container Name", tr.Name)
 			break
@@ -602,7 +601,6 @@ func GetRedisNodesByRole(ctx context.Context, cl kubernetes.Interface, cr *rrvb2
 func checkRedisServerRole(ctx context.Context, redisClient *redis.Client, podName string) string {
 	info, err := redisClient.Info(ctx, "Replication").Result()
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to Get the role Info of the", "redis pod", podName)
 		return ""
 	}
 	lines := strings.Split(info, "\r\n")
@@ -661,7 +659,7 @@ func CreateMasterSlaveReplication(ctx context.Context, client kubernetes.Interfa
 			redisClient := configureRedisReplicationClient(ctx, client, cr, masterPods[i])
 			defer redisClient.Close()
 			log.FromContext(ctx).V(1).Info("Setting the", "pod", masterPods[i], "to slave of", realMasterPod)
-			err := redisClient.SlaveOf(ctx, realMasterPodIP, "6379").Err()
+			err := redisClient.SlaveOf(ctx, realMasterPodIP, strconv.Itoa(redisPort)).Err()
 			if err != nil {
 				log.FromContext(ctx).Error(err, "Failed to set", "pod", masterPods[i], "to slave of", realMasterPod)
 				return err
