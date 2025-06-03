@@ -5,6 +5,7 @@ import (
 	"time"
 
 	rrvb2 "github.com/OT-CONTAINER-KIT/redis-operator/api/redisreplication/v1beta2"
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	"github.com/OT-CONTAINER-KIT/redis-operator/internal/controller/common"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/internal/controllerutil"
 	"github.com/OT-CONTAINER-KIT/redis-operator/internal/k8sutils"
@@ -61,12 +62,25 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	for _, reconciler := range reconcilers {
 		result, err := reconciler.rec(ctx, instance)
 		if err != nil {
+			if instance.Status.State != status.RedisReplicationFailed {
+				instance.Status.State = status.RedisReplicationFailed
+				instance.Status.Reason = status.FailedReplicationReason
+				r.Client.Status().Update(ctx, instance)
+			}
 			return intctrlutil.RequeueE(ctx, err, "")
 		}
 		if result.Requeue {
+			if instance.Status.State != status.RedisReplicationInitializing {
+				instance.Status.State = status.RedisReplicationInitializing
+				instance.Status.Reason = status.InitializingReplicationReason
+				r.Client.Status().Update(ctx, instance)
+			}
 			return result, nil
 		}
 	}
+	instance.Status.State = status.RedisReplicationReady
+	instance.Status.Reason = status.ReadyReplicationReason
+	r.Client.Status().Update(ctx, instance)
 
 	return intctrlutil.RequeueAfter(ctx, time.Second*10, "")
 }

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+set -e
+
+REPO="https://ot-container-kit.github.io/helm-charts"
+CHARTS="redis-operator:0.20.3"
+export NAMESPACE="redis"
+
+BASE64pre=""
+BASE64post=""
+
+export REPO CHARTS NAMESPACE BASE64pre BASE64post
+
+cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1
+case $1 in
+d | D | debug | DEBUG)
+  export DRY_RUN=true
+  shift
+  ;;
+esac
+for obj in $CHARTS; do
+  chart=${obj%:*}
+  chart_envs="$(find . -type f -name "values.$chart.*.yaml")"
+  if [[ -n "$chart_envs" ]]; then
+    for target in $chart_envs; do awk -F. '{print $4}' <<<"$target"; done
+    while true; do
+      read -rp "Please INPUT: " target
+      if [[ -s "values.$chart.$target.yaml" ]]; then
+        ln -sf "values.$chart.$target.yaml" "values.$chart.yaml"
+        [[ -s "$chart.$target.pre" ]] && ln -sf "$chart.$target.pre" "$chart.pre"
+        [[ -s "$chart.$target.ins" ]] && ln -sf "$chart.$target.ins" "$chart.ins"
+        [[ -s "$chart.$target.post" ]] && ln -sf "$chart.$target.post" "$chart.post"
+        break
+      fi
+    done
+  fi
+  [[ -s values="values.$chart.yaml" ]] || touch "values.$chart.yaml"
+done
+BASE64run="$(wget -qO- https://gitee.com/muicoder/public/raw/master/BASE64run)"
+echo "$BASE64run" | base64 -d | bash -s --

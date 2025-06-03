@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+set -e
+
+if ! grep "^$chart-$version.tgz$" ".cached.${0##*.}" >/dev/null 2>&1; then
+  #wget -qO- https://github.com/OT-CONTAINER-KIT/helm-charts/archive/refs/tags/$chart-$version.tar.gz | tar --strip-components=2 -xz helm-charts-$chart-$version/charts/$chart
+  wget -qO- https://github.com/OT-CONTAINER-KIT/helm-charts/releases/download/$chart-$version/$chart-$version.tgz | tar -xz
+  MANAGER_YAML="$(grep containers: -rl "$chart")"
+  if [ -z "$MANAGER_YAML" ]; then echo "manager.yaml error" && exit; fi
+  cat <<EOF >"$chart/Chart.yaml"
+apiVersion: v2
+appVersion: $version
+description: Provides easy redis setup definitions for Kubernetes services, and deployment.
+name: redis-operator
+version: 1.0.0
+EOF
+  echo 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 | base64 -d | tar -C "$chart" -xzv
+  grep opstreelabs.in -rl | grep -E '(go|yaml|PROJECT)$' | while read -r f; do
+    sed "s~opstreelabs.instance~k8s.instance~g;s~opstreelabs.in~k8s.vip~g;s~opstreelabs~k8s~g" <"$f" >abc && mv abc "$f"
+  done
+  sed 's~^  - services~  - services\n  - endpoints~' "$chart/templates/role.yaml" >f && mv f "$chart/templates/role.yaml"
+  rm -rf config/crd/bases/*.yaml
+  go mod tidy && make install
+  rm -f "$chart/crds/"*.yaml
+  cp -a "$(grep 'kind: Redis$' -rl config/crd)" "$chart/crds/redis.yaml"
+  cp -a "$(grep 'kind: RedisReplication$' -rl config/crd)" "$chart/crds/redis-replication.yaml"
+  cp -a "$(grep 'kind: RedisSentinel$' -rl config/crd)" "$chart/crds/redis-sentinel.yaml"
+  cp -a "$(grep 'kind: RedisCluster$' -rl config/crd)" "$chart/crds/redis-cluster.yaml"
+  tar -zcf "$chart-$version.tgz" "$chart"
+  $(which rm) -rf "$chart"
+  echo "$chart-$version.tgz" >>".cached.${0##*.}"
+fi
