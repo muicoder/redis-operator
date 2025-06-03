@@ -91,7 +91,8 @@ func (s *StatefulSetService) GetStatefulSetReplicas(ctx context.Context, namespa
 }
 
 const (
-	redisExporterContainer = "redis-exporter"
+	redisContainer         = "redis"
+	redisExporterContainer = "exporter"
 )
 
 // statefulSetParameters will define statefulsets input params
@@ -423,7 +424,7 @@ func generateContainerDef(name string, containerParams containerParameters, clus
 	enableAuth := containerParams.EnabledPassword != nil && *containerParams.EnabledPassword
 	containerDefinition := []corev1.Container{
 		{
-			Name:            name,
+			Name:            redisContainer,
 			Image:           containerParams.Image,
 			ImagePullPolicy: containerParams.ImagePullPolicy,
 			SecurityContext: containerParams.SecurityContext,
@@ -509,6 +510,14 @@ func generateContainerDef(name string, containerParams containerParameters, clus
 		containerDefinition[0].Env = append(containerDefinition[0].Env, *containerParams.AdditionalEnvVariable...)
 	}
 
+	for ci, c := range containerDefinition {
+		if len(c.Env) > 0 {
+			envVars := containerDefinition[ci].Env
+			sort.SliceStable(envVars, func(i, j int) bool {
+				return envVars[i].Name < envVars[j].Name
+			})
+		}
+	}
 	return containerDefinition
 }
 
@@ -652,22 +661,12 @@ func GenerateTLSEnvironmentVariables(tlsconfig *common.TLSConfig) []corev1.EnvVa
 		tlsCertKey = tlsconfig.KeyFile
 	}
 
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "TLS_MODE",
-		Value: "true",
-	})
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "REDIS_TLS_CA_KEY",
-		Value: path.Join(root, caCert),
-	})
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "REDIS_TLS_CERT",
-		Value: path.Join(root, tlsCert),
-	})
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "REDIS_TLS_CERT_KEY",
-		Value: path.Join(root, tlsCertKey),
-	})
+	envVars = []corev1.EnvVar{
+		{Name: "TLS_MODE", Value: "true"},
+		{Name: "REDIS_TLS_CA_KEY", Value: path.Join(root, caCert)},
+		{Name: "REDIS_TLS_CERT", Value: path.Join(root, tlsCert)},
+		{Name: "REDIS_TLS_CERT_KEY", Value: path.Join(root, tlsCertKey)},
+	}
 	return envVars
 }
 
@@ -698,22 +697,12 @@ func getExporterEnvironmentVariables(params containerParameters) []corev1.EnvVar
 	var envVars []corev1.EnvVar
 	redisHost := "redis://localhost:"
 	if params.TLSConfig != nil {
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "REDIS_EXPORTER_TLS_CLIENT_KEY_FILE",
-			Value: "/tls/tls.key",
-		})
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "REDIS_EXPORTER_TLS_CLIENT_CERT_FILE",
-			Value: "/tls/tls.crt",
-		})
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "REDIS_EXPORTER_TLS_CA_CERT_FILE",
-			Value: "/tls/ca.crt",
-		})
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  "REDIS_EXPORTER_SKIP_TLS_VERIFICATION",
-			Value: "true",
-		})
+		envVars = []corev1.EnvVar{
+			{Name: "REDIS_EXPORTER_SKIP_TLS_VERIFICATION", Value: "true"},
+			{Name: "REDIS_EXPORTER_TLS_CA_CERT_FILE", Value: "/tls/ca.crt"},
+			{Name: "REDIS_EXPORTER_TLS_CLIENT_CERT_FILE", Value: "/tls/tls.crt"},
+			{Name: "REDIS_EXPORTER_TLS_CLIENT_KEY_FILE", Value: "/tls/tls.key"},
+		}
 		redisHost = "rediss://localhost:"
 	}
 	if params.RedisExporterPort != nil {
@@ -809,23 +798,15 @@ func getProbeInfo(probe *corev1.Probe, sentinel, enableTLS, enableAuth bool) *co
 	if probe.ProbeHandler.Exec == nil && probe.ProbeHandler.HTTPGet == nil && probe.ProbeHandler.TCPSocket == nil && probe.ProbeHandler.GRPC == nil {
 		healthChecker := []string{
 			"redis-cli",
-			"-h", "$(hostname)",
-		}
-		if sentinel {
-			healthChecker = append(healthChecker, "-p", "${SENTINEL_PORT}")
-		} else {
-			healthChecker = append(healthChecker, "-p", "${REDIS_PORT}")
-		}
-		if enableAuth {
-			healthChecker = append(healthChecker, "-a", "${REDIS_PASSWORD}")
+			"-p", "$(SERVER_PORT)",
 		}
 		if enableTLS {
-			healthChecker = append(healthChecker, "--tls", "--cert", "${REDIS_TLS_CERT}", "--key", "${REDIS_TLS_CERT_KEY}", "--cacert", "${REDIS_TLS_CA_KEY}")
+			healthChecker = append(healthChecker, "--tls", "--cert", "$(REDIS_TLS_CERT)", "--key", "$(REDIS_TLS_CERT_KEY)", "--cacert", "$(REDIS_TLS_CA_KEY)")
 		}
 		healthChecker = append(healthChecker, "ping")
 		probe.ProbeHandler = corev1.ProbeHandler{
 			Exec: &corev1.ExecAction{
-				Command: []string{"sh", "-c", strings.Join(healthChecker, " ")},
+				Command: healthChecker,
 			},
 		}
 	}
@@ -839,6 +820,7 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 ) []corev1.EnvVar {
 	envVars := []corev1.EnvVar{
 		{Name: "SERVER_MODE", Value: role},
+		{Name: "SERVER_PORT", Value: strconv.Itoa(*port)},
 		{Name: "SETUP_MODE", Value: role},
 	}
 
@@ -847,23 +829,6 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 			Name:  "REDIS_MAJOR_VERSION",
 			Value: *clusterVersion,
 		})
-	}
-
-	var redisHost string
-	if role == "sentinel" {
-		redisHost = "redis://localhost:" + strconv.Itoa(sentinelPort)
-		if port != nil {
-			envVars = append(envVars, corev1.EnvVar{
-				Name: "SENTINEL_PORT", Value: strconv.Itoa(*port),
-			})
-		}
-	} else {
-		redisHost = "redis://localhost:" + strconv.Itoa(redisPort)
-		if port != nil {
-			envVars = append(envVars, corev1.EnvVar{
-				Name: "REDIS_PORT", Value: strconv.Itoa(*port),
-			})
-		}
 	}
 
 	if tlsConfig != nil {
@@ -877,11 +842,6 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 		})
 	}
 
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "REDIS_ADDR",
-		Value: redisHost,
-	})
-
 	if enabledPassword != nil && *enabledPassword {
 		envVars = append(envVars, corev1.EnvVar{
 			Name: "REDIS_PASSWORD",
@@ -893,6 +853,10 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 					Key: *secretKey,
 				},
 			},
+		})
+		envVars = append(envVars, corev1.EnvVar{
+			Name:      "REDISCLI_AUTH",
+			ValueFrom: envVars[len(envVars)-1].ValueFrom,
 		})
 	}
 	if persistenceEnabled != nil && *persistenceEnabled {
@@ -911,6 +875,30 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 
 // createStatefulSet is a method to create statefulset in Kubernetes
 func createStatefulSet(ctx context.Context, cl kubernetes.Interface, namespace string, stateful *appsv1.StatefulSet) error {
+	cmName := "entrypoint." + strings.Split(stateful.ObjectMeta.OwnerReferences[0].APIVersion, "/")[0]
+	if _, err := cl.CoreV1().ConfigMaps(namespace).Get(context.TODO(), cmName, metav1.GetOptions{}); err == nil {
+		var entrypointMode int32
+		entrypointMode = 0755
+		stateful.Spec.Template.Spec.Volumes = append(stateful.Spec.Template.Spec.Volumes,
+			corev1.Volume{
+				Name: cmName[:10],
+				VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
+					Items: []corev1.KeyToPath{{Key: "entrypoint.sh", Path: cmName[:5], Mode: &entrypointMode}},
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: cmName,
+					},
+				}}},
+		)
+		for index, c := range stateful.Spec.Template.Spec.Containers {
+			if c.Name == redisContainer {
+				stateful.Spec.Template.Spec.Containers[index].VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
+					Name:      cmName[:10],
+					MountPath: "/usr/local/bin/docker-entrypoint.sh",
+					SubPath:   cmName[:5],
+				})
+			}
+		}
+	}
 	_, err := cl.AppsV1().StatefulSets(namespace).Create(context.TODO(), stateful, metav1.CreateOptions{})
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Redis stateful creation failed")

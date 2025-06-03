@@ -5,7 +5,7 @@ var operatorImage string
 
 func GetOperatorImage() string {
 	if operatorImage == "" {
-		return "quay.io/opstree/redis-operator:latest"
+		return "muicoder/redis-operator:latest"
 	}
 	return operatorImage
 }

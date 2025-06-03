@@ -73,7 +73,7 @@ func GetMaxConcurrentReconciles(defaultValue int) int {
 
 // IsWebhookEnabled returns true if webhooks are enabled
 func IsWebhookEnabled() bool {
-	return os.Getenv(EnableWebhooksEnv) != "false"
+	return os.Getenv(EnableWebhooksEnv) == "true"
 }
 
 // GetFeatureGates returns feature gates string
