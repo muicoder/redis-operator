@@ -3,7 +3,7 @@ package util
 import "net"
 
 func GetLocalIP() (string, error) {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
+	conn, err := net.Dial("udp", "1.2.4.8:80")
 	if err != nil {
 		return "", err
 	}
