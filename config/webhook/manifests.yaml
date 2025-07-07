@@ -35,7 +35,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-redis-redis-opstreelabs-in-v1beta2-redissentinel
+      path: /validate-redis-redis-k8s-vip-v1beta2-redissentinel
   failurePolicy: Fail
   name: validate-redissentinel.redis.opstreelabs.in
   rules:
