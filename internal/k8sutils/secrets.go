@@ -62,7 +62,7 @@ func getRedisTLSConfig(ctx context.Context, client kubernetes.Interface, namespa
 	return &tls.Config{
 		Certificates:       []tls.Certificate{cert},
 		RootCAs:            tlsCaCertificates,
-		MinVersion:         tls.VersionTLS12,
+		MinVersion:         tls.VersionTLS10,
 		ClientAuth:         tls.NoClientCert,
 		InsecureSkipVerify: true,
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {

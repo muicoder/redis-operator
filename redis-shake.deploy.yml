@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-shake
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis-shake
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis-shake
+    spec:
+      containers:
+        - command:
+            - /bin/sh
+            - -c
+            - |-
+              cp -auv /filters /redis-shake /*.toml .
+              exec sleep infinity
+          image: muicoder/redis-shake:stable
+          imagePullPolicy: Always
+          name: redis-shake
+          volumeMounts:
+            - mountPath: /usr/local/bin
+              name: config
+            - mountPath: /usr/local/bin/data
+              name: data
+          workingDir: /usr/local/bin
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 0
+      volumes:
+        - hostPath:
+            path: /opt/redis-shake
+            type: DirectoryOrCreate
+          name: config
+        - emptyDir:
+            sizeLimit: 16Gi
+          name: data

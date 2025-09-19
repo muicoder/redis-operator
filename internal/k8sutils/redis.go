@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	common "github.com/OT-CONTAINER-KIT/redis-operator/api/common/v1beta2"
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/common/v1beta2"
 	rcvb2 "github.com/OT-CONTAINER-KIT/redis-operator/api/rediscluster/v1beta2"
 	rrvb2 "github.com/OT-CONTAINER-KIT/redis-operator/api/redisreplication/v1beta2"
 	redis "github.com/redis/go-redis/v9"
@@ -34,7 +34,6 @@ func getRedisServerIP(ctx context.Context, client kubernetes.Interface, redisInf
 
 	redisPod, err := client.CoreV1().Pods(redisInfo.Namespace).Get(context.TODO(), redisInfo.PodName, metav1.GetOptions{})
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Error in getting Redis pod IP", "namespace", redisInfo.Namespace, "podName", redisInfo.PodName)
 		return ""
 	}
 
@@ -216,7 +215,7 @@ func ExecuteRedisClusterCommand(ctx context.Context, client kubernetes.Interface
 	executeCommand(ctx, client, cr, cmd.Args(), cr.Name+"-leader-0")
 }
 
-func getRedisTLSArgs(tlsConfig *common.TLSConfig, clientHost string) []string {
+func getRedisTLSArgs(tlsConfig *v1beta2.TLSConfig, clientHost string) []string {
 	cmd := []string{}
 	if tlsConfig != nil {
 		cmd = append(cmd, "--tls")
@@ -555,7 +554,7 @@ func getContainerID(ctx context.Context, client kubernetes.Interface, cr *rcvb2.
 	targetContainer := -1
 	for containerID, tr := range pod.Spec.Containers {
 		log.FromContext(ctx).V(1).Info("Inspecting container", "Pod Name", podName, "Container ID", containerID, "Container Name", tr.Name)
-		if tr.Name == cr.Name+"-leader" {
+		if tr.Name == redisContainer {
 			targetContainer = containerID
 			log.FromContext(ctx).V(1).Info("Leader container found", "Container ID", containerID, "Container Name", tr.Name)
 			break
@@ -650,7 +649,6 @@ func GetRedisNodesByRole(ctx context.Context, cl kubernetes.Interface, cr *rrvb2
 func checkRedisServerRole(ctx context.Context, redisClient *redis.Client, podName string) (string, error) {
 	info, err := redisClient.Info(ctx, "Replication").Result()
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to Get the role Info of the", "redis pod", podName)
 		return "", err
 	}
 	lines := strings.Split(info, "\r\n")
