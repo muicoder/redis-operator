@@ -55,7 +55,7 @@ var (
 func GetInitContainerImage() string {
 	initContainerImageOnce.Do(func() {
 		val := os.Getenv(InitContainerImageEnv)
-		initContainerImage = util.Coalesce(val, "quay.io/opstree/redis-operator:latest")
+		initContainerImage = util.Coalesce(val, "muicoder/redis-operator:latest")
 	})
 	return initContainerImage
 }
@@ -93,7 +93,7 @@ func GetMaxConcurrentReconciles(defaultValue int) int {
 
 // IsWebhookEnabled returns true if webhooks are enabled
 func IsWebhookEnabled() bool {
-	return os.Getenv(EnableWebhooksEnv) != "false"
+	return os.Getenv(EnableWebhooksEnv) == "true"
 }
 
 // GetFeatureGates returns feature gates string
