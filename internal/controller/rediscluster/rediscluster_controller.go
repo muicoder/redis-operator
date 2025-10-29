@@ -256,7 +256,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return intctrlutil.RequeueAfter(ctx, time.Second*60, "Redis cluster count is not desired", "Current.Count", nc, "Desired.Count", totalReplicas)
 	}
 
-	logger.Info("Number of Redis nodes match desired")
 	unhealthyNodeCount, err := k8sutils.UnhealthyNodesInCluster(ctx, r.K8sClient, instance)
 	if err != nil {
 		logger.Error(err, "failed to determine unhealthy node count in cluster")

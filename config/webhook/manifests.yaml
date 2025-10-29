@@ -50,7 +50,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-redis-redis-opstreelabs-in-v1beta2-redisreplication
+      path: /validate-redis-redis-k8s-vip-v1beta2-redisreplication
   failurePolicy: Fail
   name: validate-redisreplication.redis.opstreelabs.in
   rules:
