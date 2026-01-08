@@ -7,6 +7,7 @@ import (
 
 	rrvb2 "github.com/OT-CONTAINER-KIT/redis-operator/api/redisreplication/v1beta2"
 	rsvb2 "github.com/OT-CONTAINER-KIT/redis-operator/api/redissentinel/v1beta2"
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	"github.com/OT-CONTAINER-KIT/redis-operator/internal/controller/common"
 	"github.com/OT-CONTAINER-KIT/redis-operator/internal/controller/common/redis"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/internal/controllerutil"
@@ -63,12 +64,25 @@ func (r *RedisSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	for _, reconciler := range reconcilers {
 		result, err := reconciler.rec(ctx, instance)
 		if err != nil {
+			if instance.Status.State != status.RedisSentinelFailed {
+				instance.Status.State = status.RedisSentinelFailed
+				instance.Status.Reason = status.FailedSentinelReason
+				r.Client.Status().Update(ctx, instance)
+			}
 			return intctrlutil.RequeueE(ctx, err, "")
 		}
 		if result.Requeue {
+			if instance.Status.State != status.RedisSentinelInitializing {
+				instance.Status.State = status.RedisSentinelInitializing
+				instance.Status.Reason = status.InitializingSentinelReason
+				r.Client.Status().Update(ctx, instance)
+			}
 			return result, nil
 		}
 	}
+	instance.Status.State = status.RedisSenitnelReady
+	instance.Status.Reason = status.ReadySentinelReason
+	r.Client.Status().Update(ctx, instance)
 
 	return intctrlutil.Reconciled()
 }

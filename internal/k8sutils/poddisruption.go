@@ -31,7 +31,7 @@ func ReconcileRedisPodDisruptionBudget(ctx context.Context, cr *rcvb2.RedisClust
 		_, err := getPodDisruptionBudget(ctx, cr.Namespace, pdbName, cl)
 		if err == nil {
 			return deletePodDisruptionBudget(ctx, cr.Namespace, pdbName, cl)
-		} else if err != nil && errors.IsNotFound(err) {
+		} else if errors.IsNotFound(err) {
 			log.FromContext(ctx).V(1).Info("Reconciliation Successful, no PodDisruptionBudget Found.")
 			// Its ok if its not found, as we're deleting anyway
 			return nil
@@ -53,7 +53,7 @@ func ReconcileSentinelPodDisruptionBudget(ctx context.Context, cr *rsvb2.RedisSe
 		_, err := getPodDisruptionBudget(ctx, cr.Namespace, pdbName, cl)
 		if err == nil {
 			return deletePodDisruptionBudget(ctx, cr.Namespace, pdbName, cl)
-		} else if err != nil && errors.IsNotFound(err) {
+		} else if errors.IsNotFound(err) {
 			log.FromContext(ctx).V(1).Info("Reconciliation Successful, no PodDisruptionBudget Found.")
 			// Its ok if its not found, as we're deleting anyway
 			return nil
@@ -75,7 +75,7 @@ func ReconcileReplicationPodDisruptionBudget(ctx context.Context, cr *rrvb2.Redi
 		_, err := getPodDisruptionBudget(ctx, cr.Namespace, pdbName, cl)
 		if err == nil {
 			return deletePodDisruptionBudget(ctx, cr.Namespace, pdbName, cl)
-		} else if err != nil && errors.IsNotFound(err) {
+		} else if errors.IsNotFound(err) {
 			log.FromContext(ctx).V(1).Info("Reconciliation Successful, no PodDisruptionBudget Found.")
 			// Its ok if its not found, as we're deleting anyway
 			return nil

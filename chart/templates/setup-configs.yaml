@@ -1,0 +1,31 @@
+{{ $mode := include "redis.mode" . }}
+{{ $version := semver (include "redis.version" .) }}
+apiVersion: v1
+data:
+  external-common.conf: |-
+    loglevel notice
+    maxclients 10000
+  {{- if eq "cluster" $mode }}
+  external-repl.conf: |-
+    timeout 300
+    tcp-keepalive 300
+    maxmemory-policy noeviction
+    {{- if ge $version.Major 6 }}
+    repl-diskless-sync yes
+    repl-diskless-load on-empty-db
+    {{- end }}
+  {{- end }}
+kind: ConfigMap
+metadata:
+  name: {{ include "redis.cm" . }}.{{ $mode }}.{{ include "redis.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+---
+{{- if include "redis.auth" . }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "redis.sec" . }}.{{ $mode }}.{{ include "redis.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+stringData:
+  password: {{ include "redis.auth" . | quote }}
+{{- end }}

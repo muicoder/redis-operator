@@ -21,6 +21,7 @@ import (
 	"time"
 
 	rvb2 "github.com/OT-CONTAINER-KIT/redis-operator/api/redis/v1beta2"
+	"github.com/OT-CONTAINER-KIT/redis-operator/api/status"
 	"github.com/OT-CONTAINER-KIT/redis-operator/internal/controller/common"
 	intctrlutil "github.com/OT-CONTAINER-KIT/redis-operator/internal/controllerutil"
 	"github.com/OT-CONTAINER-KIT/redis-operator/internal/k8sutils"
@@ -61,12 +62,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	err = k8sutils.CreateStandaloneRedis(ctx, instance, r.K8sClient)
 	if err != nil {
+		instance.Status.State = status.RedisStandaloneFailed
+		instance.Status.Reason = status.FailedStandaloneReason
+		r.Client.Status().Update(ctx, instance)
 		return intctrlutil.RequeueE(ctx, err, "failed to create redis")
 	}
 	err = k8sutils.CreateStandaloneService(ctx, instance, r.K8sClient)
 	if err != nil {
+		instance.Status.State = status.RedisStandaloneInitializing
+		instance.Status.Reason = status.InitializingStandaloneReason
+		r.Client.Status().Update(ctx, instance)
 		return intctrlutil.RequeueE(ctx, err, "failed to create service")
 	}
+	instance.Status.State = status.RedisStandaloneReady
+	instance.Status.Reason = status.ReadyStandaloneReason
+	r.Client.Status().Update(ctx, instance)
 	return intctrlutil.RequeueAfter(ctx, time.Second*10, "requeue after 10 seconds")
 }
 

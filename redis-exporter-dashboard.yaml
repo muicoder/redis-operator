@@ -1,0 +1,18 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  labels:
+    app: grafana
+  name: redis-exporter-dashboard.json
+spec:
+  configMapRef:
+    key: redis-exporter-dashboard.json
+    name: redis-exporter-dashboard.json
+  customFolderName: ""
+  datasources:
+    - datasourceName: Prometheus
+      inputName: DS_PROM
+  # https://grafana.com/grafana/dashboards/763-redis-dashboard-for-prometheus-redis-exporter-1-x/
+#  grafanaCom:
+#    id: 17507
+#    revision: 1

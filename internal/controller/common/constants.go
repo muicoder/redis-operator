@@ -23,5 +23,5 @@ const (
 	RedisPort             = 6379
 	SentinelPort          = 26379
 	RedisExporterPort     = 9121
-	RedisExporterPortName = "redis-exporter"
+	RedisExporterPortName = "metrics"
 )

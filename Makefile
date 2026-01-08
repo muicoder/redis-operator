@@ -91,7 +91,7 @@ run: generate fmt vet manifests
 # Install CRDs into a cluster
 .PHONY: install
 install: manifests kustomize
-	$(KUSTOMIZE) build config/crd | kubectl apply --server-side=true -f -
+	$(KUSTOMIZE) build config/crd | yq 'sort_keys(..)' >crds.yaml
 
 # Uninstall CRDs from a cluster
 .PHONY: uninstall
@@ -102,7 +102,7 @@ uninstall: manifests kustomize
 .PHONY: deploy
 deploy: manifests kustomize
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | kubectl apply --server-side=true -f -
+	$(KUSTOMIZE) build config/default | yq 'sort_keys(..)' >crds.yaml
 
 # UnDeploy controller from the configured Kubernetes cluster in ~/.kube/config
 .PHONY: undeploy

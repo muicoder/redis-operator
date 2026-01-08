@@ -225,7 +225,7 @@ func (service RedisSentinelService) CreateRedisSentinelService(ctx context.Conte
 	}
 	annotations := generateServiceAnots(cr.ObjectMeta, nil, epp)
 	objectMetaInfo := generateObjectMetaInformation(serviceName, cr.Namespace, labels, annotations)
-	headlessObjectMetaInfo := generateObjectMetaInformation(serviceName+"-headless", cr.Namespace, labels, annotations)
+	headlessObjectMetaInfo := generateObjectMetaInformation(serviceName+"-headless", cr.Namespace, labels, generateServiceAnots(cr.ObjectMeta, cr.Spec.KubernetesConfig.GetHeadlessServiceAnnotations(), epp))
 	additionalObjectMetaInfo := generateObjectMetaInformation(serviceName+"-additional", cr.Namespace, labels, generateServiceAnots(cr.ObjectMeta, cr.Spec.KubernetesConfig.GetServiceAnnotations(), epp))
 
 	err := CreateOrUpdateService(ctx, cr.Namespace, headlessObjectMetaInfo, redisSentinelAsOwner(cr), disableMetrics, true, "ClusterIP", common.SentinelPort, cl)
@@ -239,17 +239,19 @@ func (service RedisSentinelService) CreateRedisSentinelService(ctx context.Conte
 		return err
 	}
 
-	err = CreateOrUpdateService(
-		ctx,
-		cr.Namespace,
-		additionalObjectMetaInfo,
-		redisSentinelAsOwner(cr),
-		disableMetrics,
-		false,
-		cr.Spec.KubernetesConfig.GetServiceType(),
-		common.SentinelPort,
-		cl,
-	)
+	if cr.Spec.KubernetesConfig.ShouldCreateAdditionalService() {
+		err = CreateOrUpdateService(
+			ctx,
+			cr.Namespace,
+			additionalObjectMetaInfo,
+			redisSentinelAsOwner(cr),
+			disableMetrics,
+			false,
+			cr.Spec.KubernetesConfig.GetServiceType(),
+			common.SentinelPort,
+			cl,
+		)
+	}
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Cannot create additional service for Redis", "Setup.Type", service.RedisServiceRole)
 		return err
@@ -270,6 +272,14 @@ func getSentinelEnvVariable(cr *rsvb2.RedisSentinel) *[]corev1.EnvVar {
 		{
 			Name:  "PORT",
 			Value: cr.Spec.RedisSentinelConfig.RedisPort,
+		},
+		{
+			Name:  "MASTER_PORT",
+			Value: cr.Spec.RedisSentinelConfig.RedisPort,
+		},
+		{
+			Name:  "REPLICATION",
+			Value: cr.Spec.RedisSentinelConfig.RedisReplicationName,
 		},
 		{
 			Name:  "QUORUM",
