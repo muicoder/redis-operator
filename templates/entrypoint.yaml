@@ -1,0 +1,12 @@
+apiVersion: v1
+data:
+{{- if eq .Chart.Name .Release.Name }}
+{{ (.Files.Glob "entrypoint.sh").AsConfig | indent 2 }}
+{{- else }}
+binaryData:
+{{ (.Files.Glob "entrypoint.sh").AsSecrets | indent 2 }}
+{{- end }}
+kind: ConfigMap
+metadata:
+  name: entrypoint.redis.redis.k8s.vip
+  namespace: {{ .Release.Namespace }}

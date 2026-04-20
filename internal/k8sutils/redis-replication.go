@@ -52,9 +52,11 @@ func CreateReplicationService(ctx context.Context, cr *rrvb2.RedisReplication, c
 		log.FromContext(ctx).Error(err, "Cannot create replication service for Redis")
 		return err
 	}
-	if err := CreateOrUpdateService(ctx, cr.Namespace, additionalObjectMetaInfo, redisReplicationAsOwner(cr), disableMetrics, false, cr.Spec.KubernetesConfig.GetServiceType(), common.RedisPort, cl); err != nil {
-		log.FromContext(ctx).Error(err, "Cannot create additional service for Redis Replication")
-		return err
+	if cr.Spec.KubernetesConfig.ShouldCreateAdditionalService() {
+		if err := CreateOrUpdateService(ctx, cr.Namespace, additionalObjectMetaInfo, redisReplicationAsOwner(cr), disableMetrics, false, cr.Spec.KubernetesConfig.GetServiceType(), common.RedisPort, cl); err != nil {
+			log.FromContext(ctx).Error(err, "Cannot create additional service for Redis Replication")
+			return err
+		}
 	}
 	if err := CreateOrUpdateService(ctx, cr.Namespace, masterObjectMetaInfo, redisReplicationAsOwner(cr), disableMetrics, false, "ClusterIP", common.RedisPort, cl); err != nil {
 		log.FromContext(ctx).Error(err, "Cannot create master service for Redis")

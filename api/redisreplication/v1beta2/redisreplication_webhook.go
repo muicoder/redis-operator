@@ -28,13 +28,13 @@ import (
 )
 
 const (
-	webhookPath = "/validate-redis-redis-opstreelabs-in-v1beta2-redisreplication"
+	webhookPath = "/validate-redis-redis-k8s-vip-v1beta2-redisreplication"
 )
 
 // log is for logging in this package.
 var redisreplicationlog = logf.Log.WithName("redisreplication-v1beta2-validation")
 
-// +kubebuilder:webhook:path=/validate-redis-redis-opstreelabs-in-v1beta2-redisreplication,mutating=false,failurePolicy=fail,sideEffects=None,groups=redis.redis.opstreelabs.in,resources=redisreplications,verbs=create;update,versions=v1beta2,name=validate-redisreplication.redis.opstreelabs.in,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-redis-redis-k8s-vip-v1beta2-redisreplication,mutating=false,failurePolicy=fail,sideEffects=None,groups=redis.redis.opstreelabs.in,resources=redisreplications,verbs=create;update,versions=v1beta2,name=validate-redisreplication.redis.opstreelabs.in,admissionReviewVersions=v1
 
 func (r *RedisReplication) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
