@@ -1,0 +1,168 @@
+{{ $mode := include "redis.mode" . }}
+{{ $additionalConfig := printf "%s.%s.%s" (include "redis.cm" .) $mode (include "redis.fullname" .) }}
+{{ $exporter := include "redis.exporter.enabled" . }}
+{{ $storage := include "redis.persistence.enabled" . }}
+{{ $pvcClass := include "redis.persistence.class" . }}
+{{ $pvcSize := include "redis.persistence.size" . }}
+{{ $version := semver (include "redis.version" .) }}
+apiVersion: redis.redis.k8s.vip/v1beta2
+kind: {{ include "redis.kind" . }}
+metadata:
+  name: {{ include "redis.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  {{- if include "redis.tlsSecretName" . }}
+  TLS:
+    secret:
+      secretName: {{ include "redis.tlsSecretName" . }}
+  {{- end }}
+  {{- if ne "cluster" $mode }}
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: role
+                  operator: In
+                  values:
+                    - {{ $mode }}
+            topologyKey: kubernetes.io/hostname
+          weight: 100
+  {{- end }}
+  {{- if ne "standalone" $mode }}
+  clusterSize: {{ include "redis.size" . }}
+  {{- end }}
+  {{- if eq "cluster" $mode }}
+  clusterVersion: v{{ $version.Major }}
+  {{- end }}
+  kubernetesConfig:
+    image: {{ include "redis.image" . }}
+    imagePullPolicy: {{ include "redis.imagePullPolicy" . }}
+    {{- if include "redis.auth" . }}
+    redisSecret:
+      key: password
+      name: {{ include "redis.sec" . }}.{{ $mode }}.{{ include "redis.fullname" . }}
+    {{- end }}
+    resources:
+      limits:
+      {{- if eq "sentinel" $mode }}
+        cpu: "2"
+        memory: 4Gi
+      {{- else }}
+        cpu: "8"
+        memory: 16Gi
+      {{- end }}
+      requests:
+        cpu: 50m
+        memory: 100Mi
+    service:
+      additional:
+        enabled: false
+      serviceType: ClusterIP
+  {{- if ne "cluster" $mode }}
+  livenessProbe:
+    failureThreshold: 10
+    initialDelaySeconds: 3
+  nodeSelector:
+    redis: ""
+  readinessProbe:
+    initialDelaySeconds: 3
+  {{- if eq "sentinel" $mode }}
+  redisSentinelConfig:
+    additionalSentinelConfig: {{ $additionalConfig }}
+    masterGroupName: {{ include "redis.fullname" . }}
+    quorum: "2"
+    parallelSyncs: "1"
+    redisReplicationName: {{ include "redis.repl" . }}
+    failoverTimeout: "10000"
+    downAfterMilliseconds: "3000"
+  {{- else }}
+  redisConfig:
+    additionalRedisConfig: {{ $additionalConfig }}
+  {{- end }}
+  terminationGracePeriodSeconds: 300
+  {{- end }}
+  {{- if eq "cluster" $mode }}
+  {{- if eq "true" $storage }}
+  persistenceEnabled: true
+  {{- end }}
+  {{- end }}
+  {{- if eq "true" $exporter }}
+  redisExporter:
+    enabled: true
+    image: {{ include "redis.exporter.image" . }}
+    imagePullPolicy: {{ include "redis.imagePullPolicy" . }}
+    resources:
+      limits:
+        cpu: "2"
+        memory: 4Gi
+      requests:
+        cpu: 50m
+        memory: 100Mi
+  {{- end }}
+  {{- if eq "cluster" $mode }}
+  redisFollower:
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: role
+                    operator: In
+                    values:
+                      - follower
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+    livenessProbe:
+      initialDelaySeconds: 3
+    nodeSelector:
+      redis: ""
+    pdb:
+      enabled: false
+    readinessProbe:
+      initialDelaySeconds: 3
+    redisConfig:
+      additionalRedisConfig: {{ $additionalConfig }}
+    terminationGracePeriodSeconds: 300
+  redisLeader:
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: role
+                    operator: In
+                    values:
+                      - leader
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+    livenessProbe:
+      initialDelaySeconds: 3
+    nodeSelector:
+      redis: ""
+    pdb:
+      enabled: false
+    readinessProbe:
+      initialDelaySeconds: 3
+    redisConfig:
+      additionalRedisConfig: {{ $additionalConfig }}
+    terminationGracePeriodSeconds: 300
+  {{- end }}
+  podSecurityContext:
+    runAsNonRoot: false
+  sidecars: [ ]
+  {{- if eq "true" $storage }}
+  storage:
+    keepAfterDelete: false
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ $pvcSize }}
+        storageClassName: {{ $pvcClass }}
+  {{- end }}

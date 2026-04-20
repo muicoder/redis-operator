@@ -1,0 +1,15 @@
+exporter: # for AIO
+  enabled: true
+  image: oliver006/redis_exporter
+  tag: alpine
+imagePullPolicy: IfNotPresent # Always, IfNotPresent
+mode: standalone # standalone cluster replication sentinel
+password: "" # for AIO
+persistence: # for Standalone/Cluster/Replication
+  class: local-path # StorageClass
+  enabled: false
+  size: 50Gi
+redis: 6.2
+repl: repl # Sentinel with redisReplicationName
+size: 3 # for Cluster/Replication/Sentinel
+tlsSecretName: "" # sh gen-tls.sh

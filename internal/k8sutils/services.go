@@ -49,6 +49,8 @@ func generateServiceDef(serviceMeta metav1.ObjectMeta, epp exporterPortProvider,
 	}
 	if headless {
 		service.Spec.ClusterIP = "None"
+	} else {
+		serviceMeta.Labels["argocd.argoproj.io/redis-operator.instance"] = serviceMeta.Labels["role"] + "." + serviceMeta.Name
 	}
 	if exporterPort, ok := epp(); ok {
 		redisExporterService := enableMetricsPort(exporterPort)

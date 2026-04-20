@@ -15,12 +15,26 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - description: Current cluster node count
+      jsonPath: .spec.clusterSize
+      name: ClusterSize
+      type: integer
     - jsonPath: .status.masterNode
       name: Master
+      type: string
+    - description: The current state of the Redis Replication
+      jsonPath: .status.state
+      name: State
+      priority: 1
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
+    - description: The reason for the current state
+      jsonPath: .status.reason
+      name: Reason
+      priority: 1
+      type: string
     name: v1beta2
     schema:
       openAPIV3Schema:
@@ -5851,6 +5865,10 @@ spec:
                     type: integer
                 type: object
               masterNode:
+                type: string
+              reason:
+                type: string
+              state:
                 type: string
             type: object
         required:
