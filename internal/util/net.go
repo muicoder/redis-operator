@@ -11,7 +11,7 @@ func GetLocalIP() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	conn, err := dialer.DialContext(ctx, "udp", "8.8.8.8:80")
+	conn, err := dialer.DialContext(ctx, "udp", "1.2.4.8:80")
 	if err != nil {
 		return "", err
 	}

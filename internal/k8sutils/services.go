@@ -183,6 +183,7 @@ func patchService(ctx context.Context, storedService *corev1.Service, newService
 func CreateOrUpdateMetricsService(ctx context.Context, namespace string, serviceName string, selectorLabels map[string]string, ownerDef metav1.OwnerReference, exporterPort int, cl kubernetes.Interface) error {
 	serviceLabels := maps.Copy(selectorLabels)
 	serviceLabels["app.kubernetes.io/component"] = "metrics"
+	serviceLabels["argocd.argoproj.io/redis-operator"] = ownerDef.Kind
 
 	annotations := map[string]string{
 		"prometheus.io/scrape": "true",

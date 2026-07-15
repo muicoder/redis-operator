@@ -48,7 +48,6 @@ func (s *StatefulSetService) IsStatefulSetReady(ctx context.Context, namespace, 
 
 	sts, err := s.kubeClient.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		log.FromContext(ctx).Error(err, "failed to get statefulset")
 		return false
 	}
 
@@ -90,7 +89,8 @@ func (s *StatefulSetService) GetStatefulSetReplicas(ctx context.Context, namespa
 }
 
 const (
-	redisExporterContainer = "redis-exporter"
+	redisContainer         = "redis"
+	redisExporterContainer = "exporter"
 )
 
 // statefulSetParameters will define statefulsets input params
@@ -468,7 +468,7 @@ func generateContainerDef(name string, containerParams containerParameters, clus
 	enableTLS := containerParams.TLSConfig != nil
 	containerDefinition := []corev1.Container{
 		{
-			Name:            name,
+			Name:            redisContainer,
 			Image:           containerParams.Image,
 			ImagePullPolicy: containerParams.ImagePullPolicy,
 			SecurityContext: containerParams.SecurityContext,
@@ -574,6 +574,12 @@ func generateContainerDef(name string, containerParams containerParameters, clus
 		containerDefinition[0].Env = append(containerDefinition[0].Env, *containerParams.AdditionalEnvVariable...)
 	}
 
+	for i := range containerDefinition {
+		envVars := containerDefinition[i].Env
+		sort.SliceStable(envVars, func(i, j int) bool {
+			return envVars[i].Name < envVars[j].Name
+		})
+	}
 	return containerDefinition
 }
 
@@ -967,12 +973,7 @@ func getProbeInfo(probe *corev1.Probe, sentinel, enableTLS bool) *corev1.Probe {
 	if probe.Exec == nil && probe.HTTPGet == nil && probe.TCPSocket == nil && probe.GRPC == nil {
 		redisHealthCheck := []string{
 			"redis-cli",
-			"-h", "$(hostname)",
-		}
-		if sentinel {
-			redisHealthCheck = append(redisHealthCheck, "-p", "${SENTINEL_PORT}")
-		} else {
-			redisHealthCheck = append(redisHealthCheck, "-p", "${REDIS_PORT}")
+			"-p", "${SERVER_PORT}",
 		}
 		if enableTLS {
 			redisHealthCheck = append(redisHealthCheck, "--tls", "--cert", "${REDIS_TLS_CERT}", "--key", "${REDIS_TLS_CERT_KEY}", "${REDIS_TLS_CA_CERT:+--cacert}", "${REDIS_TLS_CA_CERT}")
@@ -1001,6 +1002,7 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 ) []corev1.EnvVar {
 	envVars := []corev1.EnvVar{
 		{Name: "SERVER_MODE", Value: role},
+		{Name: "SERVER_PORT", Value: strconv.Itoa(*port)},
 		{Name: "SETUP_MODE", Value: role},
 	}
 
@@ -1024,14 +1026,14 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 	var redisHost string
 	if role == "sentinel" {
 		redisHost = "redis://localhost:" + strconv.Itoa(common.SentinelPort)
-		if port != nil {
+		if &port != nil {
 			envVars = append(envVars, corev1.EnvVar{
 				Name: "SENTINEL_PORT", Value: strconv.Itoa(*port),
 			})
 		}
 	} else {
 		redisHost = "redis://localhost:" + strconv.Itoa(common.RedisPort)
-		if port != nil {
+		if &port != nil {
 			envVars = append(envVars, corev1.EnvVar{
 				Name: "REDIS_PORT", Value: strconv.Itoa(*port),
 			})
@@ -1101,6 +1103,30 @@ func getEnvironmentVariables(role string, enabledPassword *bool, secretName *str
 
 // createStatefulSet is a method to create statefulset in Kubernetes
 func createStatefulSet(ctx context.Context, cl kubernetes.Interface, namespace string, stateful *appsv1.StatefulSet) error {
+	cmName := "entrypoint." + strings.Split(stateful.ObjectMeta.OwnerReferences[0].APIVersion, "/")[0]
+	if _, err := cl.CoreV1().ConfigMaps(namespace).Get(context.TODO(), cmName, metav1.GetOptions{}); err == nil {
+		var entrypointMode int32
+		entrypointMode = 0755
+		stateful.Spec.Template.Spec.Volumes = append(stateful.Spec.Template.Spec.Volumes,
+			corev1.Volume{
+				Name: cmName[:10],
+				VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
+					Items: []corev1.KeyToPath{{Key: "entrypoint.sh", Path: cmName[:5], Mode: &entrypointMode}},
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: cmName,
+					},
+				}}},
+		)
+		for index, tr := range stateful.Spec.Template.Spec.Containers {
+			if tr.Name == redisContainer {
+				stateful.Spec.Template.Spec.Containers[index].VolumeMounts = append(tr.VolumeMounts, corev1.VolumeMount{
+					Name:      cmName[:10],
+					MountPath: "/usr/local/bin/docker-entrypoint.sh",
+					SubPath:   cmName[:5],
+				})
+			}
+		}
+	}
 	_, err := cl.AppsV1().StatefulSets(namespace).Create(context.TODO(), stateful, metav1.CreateOptions{})
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Redis stateful creation failed")

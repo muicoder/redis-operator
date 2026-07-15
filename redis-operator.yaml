@@ -1,0 +1,31 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: redis-operator
+  namespace: kube-system
+spec:
+  chart: redis-operator
+  createNamespace: true
+  failurePolicy: retry
+  insecureSkipTLSVerify: true
+  repo: https://ot-container-kit.github.io/helm-charts
+  targetNamespace: redis
+  valuesContent: |
+    certmanager:
+      enabled: false
+    featureGates:
+      AvoidCommandLinePassword: true
+      GenerateConfigInInitContainer: false
+    nodeSelector:
+      operator: ""
+    redisOperator:
+      env:
+        - name: WATCH_NAMESPACE
+          value: ""
+        - name: OPERATOR_STS_PVC_TEMPLATE_NAME
+          value: data
+      imagePullPolicy: IfNotPresent
+      imageTag: v0.26.0
+      webhook: false
+    replicas: 1
+  version: 0.26.1
