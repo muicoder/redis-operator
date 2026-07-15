@@ -6,7 +6,6 @@ resources:
 - bases/redis.redis.opstreelabs.in_redisclusters.yaml
 - bases/redis.redis.opstreelabs.in_redisreplications.yaml
 - bases/redis.redis.opstreelabs.in_redissentinels.yaml
-# +kubebuilder:scaffold:crdkustomizeresource
 
 # [CERTMANAGER] To enable cert-manager, uncomment all the sections with [CERTMANAGER] prefix.
 # patches here are for enabling the CA injection for each CRD

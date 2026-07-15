@@ -70,6 +70,10 @@ func (r *RedisSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
+	r.updateStatus(ctx, instance, rsvb2.RedisSentinelStatus{
+		State:  "Ready",
+		Reason: "Reconciled",
+	})
 	return intctrlutil.Reconciled()
 }
 
@@ -139,7 +143,7 @@ func (r *RedisSentinelReconciler) reconcileSentinel(ctx context.Context, instanc
 		}
 	}
 	if err := r.Healer.SentinelMonitor(ctx, instance, monitorAddr); err != nil {
-		return intctrlutil.RequeueE(ctx, err, "")
+		return intctrlutil.RequeueAfter(ctx, time.Second*10, "waiting for sentinel monitor")
 	}
 	if err := r.Healer.SentinelSet(ctx, instance, monitorAddr); err != nil {
 		return intctrlutil.RequeueE(ctx, err, "")
@@ -162,6 +166,13 @@ func (r *RedisSentinelReconciler) reconcileService(ctx context.Context, instance
 		return intctrlutil.RequeueE(ctx, err, "")
 	}
 	return intctrlutil.Reconciled()
+}
+
+func (r *RedisSentinelReconciler) updateStatus(ctx context.Context, rr *rsvb2.RedisSentinel, status rsvb2.RedisSentinelStatus) error {
+	copy := rr.DeepCopy()
+	copy.Spec = rsvb2.RedisSentinelSpec{}
+	copy.Status = status
+	return common.UpdateStatus(ctx, r.Client, copy)
 }
 
 // SetupWithManager sets up the controller with the Manager.

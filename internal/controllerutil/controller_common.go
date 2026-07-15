@@ -26,10 +26,9 @@ func RequeueAfter(ctx context.Context, duration time.Duration, msg string, keysA
 }
 
 func RequeueE(ctx context.Context, err error, msg string, keysAndValues ...interface{}) (reconcile.Result, error) {
-	if msg == "" {
-		msg = "requeue with error"
+	if msg != "" {
+		log.FromContext(ctx).Error(err, msg, keysAndValues...)
 	}
-	log.FromContext(ctx).Error(err, msg, keysAndValues...)
 	return reconcile.Result{}, err
 }
 

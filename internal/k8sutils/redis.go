@@ -49,7 +49,6 @@ func getRedisServerIP(ctx context.Context, client kubernetes.Interface, redisInf
 
 	redisPod, err := client.CoreV1().Pods(redisInfo.Namespace).Get(context.TODO(), redisInfo.PodName, metav1.GetOptions{})
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Error in getting Redis pod IP", "namespace", redisInfo.Namespace, "podName", redisInfo.PodName)
 		return ""
 	}
 
@@ -191,7 +190,7 @@ func repairDisconnectedNodes(ctx context.Context, client kubernetes.Interface, c
 		if !nodeFailedOrDisconnected(node) {
 			continue
 		}
-		host, err := getHostFromClusterNode(node)
+		host, err := getHostFromClusterNode(client, node)
 		if err != nil {
 			lastError = err
 			log.FromContext(ctx).V(1).Error(err, "Failed to get pod name from cluster node. Continuing with other nodes.", "Node", node)
@@ -241,12 +240,12 @@ func repairDisconnectedNodes(ctx context.Context, client kubernetes.Interface, c
 func RepairStaleReplication(ctx context.Context, client kubernetes.Interface, cr *rcvb2.RedisCluster) (int, error) {
 	redisClient := configureRedisClient(ctx, client, cr, cr.Name+"-leader-0")
 	defer redisClient.Close()
-	return repairStaleReplication(ctx, redisClient, func(podName string) *redis.Client {
+	return repairStaleReplication(ctx, client, redisClient, func(podName string) *redis.Client {
 		return configureRedisClient(ctx, client, cr, podName)
 	})
 }
 
-func repairStaleReplication(ctx context.Context, redisClient *redis.Client, makeClient func(podName string) *redis.Client) (int, error) {
+func repairStaleReplication(ctx context.Context, client kubernetes.Interface, redisClient *redis.Client, makeClient func(podName string) *redis.Client) (int, error) {
 	logger := log.FromContext(ctx)
 
 	nodes, err := clusterNodes(ctx, redisClient)
@@ -263,7 +262,7 @@ func repairStaleReplication(ctx context.Context, redisClient *redis.Client, make
 		if nodeFailedOrDisconnected(node) {
 			continue
 		}
-		host, err := getHostFromClusterNode(node)
+		host, err := getHostFromClusterNode(client, node)
 		if err != nil {
 			lastError = err
 			continue
@@ -311,13 +310,27 @@ func replicationLinkUp(info string) bool {
 	return true
 }
 
-func getHostFromClusterNode(node clusterNodesResponse) (string, error) {
-	addressAndHost := node[1]
-	s := strings.Split(addressAndHost, ",")
-	if len(s) != 2 {
-		return "", fmt.Errorf("failed to extract host from host and address string, unexpected number of elements: %d", len(s))
+func getHostFromClusterNode(client kubernetes.Interface, node clusterNodesResponse) (string, error) {
+	if len(node) < 2 {
+		return "", fmt.Errorf("insufficient fields in node line")
 	}
-	return strings.Split(addressAndHost, ",")[1], nil
+	addressField := node[1]
+	if addressField == "" {
+		return "", fmt.Errorf("empty address field")
+	}
+	parts := strings.SplitN(addressField, ",", 2)
+	if len(parts) == 2 && parts[1] != "" {
+		return parts[1], nil
+	}
+	podIP, _, err := net.SplitHostPort(strings.Split(addressField, "@")[0])
+	if len(podIP) == 0 || err != nil {
+		return "", fmt.Errorf("failed to parse address %q: %v", addressField, err)
+	}
+	pods, err := client.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{LabelSelector: "redis_setup_type=cluster, role in (leader, follower)", FieldSelector: "status.podIP=" + podIP})
+	if err == nil && len(pods.Items) > 0 {
+		return pods.Items[0].Name, nil
+	}
+	return "", fmt.Errorf("failed to extract host from host and address string, unexpected node: %s", node)
 }
 
 // CreateMultipleLeaderRedisCommand will create command for single leader cluster creation
@@ -802,7 +815,7 @@ func getContainerID(ctx context.Context, client kubernetes.Interface, cr *rcvb2.
 	targetContainer := -1
 	for containerID, tr := range pod.Spec.Containers {
 		log.FromContext(ctx).V(1).Info("Inspecting container", "Pod Name", podName, "Container ID", containerID, "Container Name", tr.Name)
-		if tr.Name == cr.Name+"-leader" {
+		if tr.Name == redisContainer {
 			targetContainer = containerID
 			log.FromContext(ctx).V(1).Info("Leader container found", "Container ID", containerID, "Container Name", tr.Name)
 			break
@@ -960,7 +973,6 @@ func IsRedisPodProbeable(pod *corev1.Pod) bool {
 func checkRedisServerRole(ctx context.Context, redisClient *redis.Client, podName string) (string, error) {
 	info, err := redisClient.Info(ctx, "Replication").Result()
 	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to Get the role Info of the", "redis pod", podName)
 		return "", err
 	}
 	lines := strings.Split(info, "\r\n")

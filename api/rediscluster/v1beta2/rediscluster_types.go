@@ -136,10 +136,10 @@ type RedisClusterStatus struct {
 type RedisClusterState string
 
 const (
-	InitializingClusterLeaderReason   string = "RedisCluster is initializing leaders"
-	InitializingClusterFollowerReason string = "RedisCluster is initializing followers"
-	BootstrapClusterReason            string = "RedisCluster is bootstrapping"
-	ReadyClusterReason                string = "RedisCluster is ready"
+	InitializingClusterLeaderReason   string = "initializing leaders"
+	InitializingClusterFollowerReason string = "initializing followers"
+	BootstrapClusterReason            string = "bootstrapping"
+	ReadyClusterReason                string = "healthy"
 )
 
 // Status Field of the Redis Cluster
@@ -157,9 +157,9 @@ const (
 // +kubebuilder:printcolumn:name="ClusterSize",type=integer,JSONPath=`.spec.clusterSize`,description=Current cluster node count
 // +kubebuilder:printcolumn:name="ReadyLeaderReplicas",type="integer",JSONPath=".status.readyLeaderReplicas",description="Number of ready leader replicas"
 // +kubebuilder:printcolumn:name="ReadyFollowerReplicas",type="integer",JSONPath=".status.readyFollowerReplicas",description="Number of ready follower replicas"
-// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="The current state of the Redis Cluster",priority=1
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,description="Age of Cluster",priority=1
-// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.reason",description="The reason for the current state",priority=1
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="The current state of the Redis Cluster"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,description="Age of Cluster"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.reason",description="The reason for the current state"
 
 // RedisCluster is the Schema for the redisclusters API
 type RedisCluster struct {

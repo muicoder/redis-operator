@@ -1,0 +1,13 @@
+certmanager:
+  enabled: false
+nodeSelector:
+  operator: ""
+redisOperator:
+  env:
+    - name: WATCH_NAMESPACE
+      value: ""
+    - name: OPERATOR_STS_PVC_TEMPLATE_NAME
+      value: data
+  imageName: muicoder/redis-operator
+  imageTag: latest
+  webhook: false

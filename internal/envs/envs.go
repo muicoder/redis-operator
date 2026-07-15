@@ -59,7 +59,7 @@ var (
 func GetInitContainerImage() string {
 	initContainerImageOnce.Do(func() {
 		val := os.Getenv(InitContainerImageEnv)
-		initContainerImage = util.Coalesce(val, "quay.io/opstree/redis-operator:latest")
+		initContainerImage = util.Coalesce(val, "docker.io/muicoder/redis-operator:latest")
 	})
 	return initContainerImage
 }
@@ -108,7 +108,7 @@ func GetExecCommandTimeout(defaultValue time.Duration) time.Duration {
 
 // IsWebhookEnabled returns true if webhooks are enabled
 func IsWebhookEnabled() bool {
-	return os.Getenv(EnableWebhooksEnv) != "false"
+	return os.Getenv(EnableWebhooksEnv) == "true"
 }
 
 // GetFeatureGates returns feature gates string

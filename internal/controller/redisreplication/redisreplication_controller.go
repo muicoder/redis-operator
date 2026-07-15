@@ -78,6 +78,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 	}
 
+	r.updateStatus(ctx, instance, rrvb2.RedisReplicationStatus{
+		MasterNode:     instance.Status.MasterNode,
+		ConnectionInfo: instance.Status.ConnectionInfo,
+		State:          "Ready",
+		Reason:         "Reconciled",
+	})
 	return intctrlutil.RequeueAfter(ctx, time.Second*30, "")
 }
 
@@ -104,6 +110,8 @@ func (r *Reconciler) UpdateRedisReplicationMaster(ctx context.Context, instance 
 	return r.updateStatus(ctx, instance, rrvb2.RedisReplicationStatus{
 		MasterNode:     masterNode,
 		ConnectionInfo: connectionInfo,
+		State:          "Initializing",
+		Reason:         "UpdateRedisReplicationMaster",
 	})
 }
 
