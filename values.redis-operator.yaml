@@ -1,0 +1,18 @@
+certmanager:
+  enabled: false
+featureGates:
+  AvoidCommandLinePassword: true
+  GenerateConfigInInitContainer: false
+nodeSelector:
+  operator: ""
+redisOperator:
+  env:
+    - name: WATCH_NAMESPACE
+      value: ""
+    - name: OPERATOR_STS_PVC_TEMPLATE_NAME
+      value: data
+  imageName: docker.io/muicoder/redis-operator
+  imagePullPolicy: IfNotPresent
+  imageTag: v0.26.0
+  webhook: false
+replicas: 1

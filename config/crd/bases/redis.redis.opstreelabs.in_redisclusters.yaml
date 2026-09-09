@@ -30,17 +30,14 @@ spec:
     - description: The current state of the Redis Cluster
       jsonPath: .status.state
       name: State
-      priority: 1
       type: string
     - description: Age of Cluster
       jsonPath: .metadata.creationTimestamp
       name: Age
-      priority: 1
       type: date
     - description: The reason for the current state
       jsonPath: .status.reason
       name: Reason
-      priority: 1
       type: string
     name: v1beta2
     schema:

@@ -64,10 +64,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	err = k8sutils.CreateStandaloneRedis(ctx, instance, r.K8sClient)
 	if err != nil {
+		r.updateStatus(ctx, instance, rvb2.RedisStatus{
+			State:  "Initializing",
+			Reason: "StatefulSet is initializing",
+		})
 		return intctrlutil.RequeueE(ctx, err, "failed to create redis")
 	}
 	err = k8sutils.CreateStandaloneService(ctx, instance, r.K8sClient)
 	if err != nil {
+		r.updateStatus(ctx, instance, rvb2.RedisStatus{
+			State:  "Initializing",
+			Reason: "Service is initializing",
+		})
 		return intctrlutil.RequeueE(ctx, err, "failed to create service")
 	}
 
@@ -83,7 +91,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return intctrlutil.RequeueAfter(ctx, time.Second*10, "waiting for redis to become reachable to apply dynamic config")
 		}
 	}
+	r.updateStatus(ctx, instance, rvb2.RedisStatus{
+		State:  "Ready",
+		Reason: "Reconciled",
+	})
 	return intctrlutil.Reconciled()
+}
+
+func (r *Reconciler) updateStatus(ctx context.Context, rr *rvb2.Redis, status rvb2.RedisStatus) error {
+	copy := rr.DeepCopy()
+	copy.Spec = rvb2.RedisSpec{}
+	copy.Status = status
+	return common.UpdateStatus(ctx, r.Client, copy)
 }
 
 // SetupWithManager sets up the controller with the Manager.

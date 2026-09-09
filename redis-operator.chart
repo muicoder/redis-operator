@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+set -e
+
+if ! grep "^$chart-$version.tgz$" ".cached.${0##*.}" >/dev/null 2>&1; then
+  #wget -qO- https://github.com/OT-CONTAINER-KIT/helm-charts/archive/refs/tags/$chart-$version.tar.gz | tar --strip-components=2 -xz helm-charts-$chart-$version/charts/$chart
+  wget -qO- https://github.com/OT-CONTAINER-KIT/helm-charts/releases/download/$chart-$version/$chart-$version.tgz | tar -xz
+  MANAGER_YAML="$(grep containers: -rl "$chart")"
+  if [ -z "$MANAGER_YAML" ]; then echo "manager.yaml error" && exit; fi
+  cat <<EOF >"$chart/Chart.yaml"
+apiVersion: v2
+appVersion: $version
+description: Provides easy redis setup definitions for Kubernetes services, and deployment.
+name: redis-operator
+version: 1.0.0
+EOF
+  echo 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 | base64 -d | tar -C "$chart" -xzv
+  rm -rf config/crd/bases/*.yaml
+  go mod tidy && make install
+  rm -f "$chart/crds/"*.yaml
+  cp -a "$(grep 'kind: Redis$' -rl config/crd)" "$chart/crds/redis.yaml"
+  cp -a "$(grep 'kind: RedisReplication$' -rl config/crd)" "$chart/crds/redis-replication.yaml"
+  cp -a "$(grep 'kind: RedisSentinel$' -rl config/crd)" "$chart/crds/redis-sentinel.yaml"
+  cp -a "$(grep 'kind: RedisCluster$' -rl config/crd)" "$chart/crds/redis-cluster.yaml"
+  tar -zcf "$chart-$version.tgz" "$chart"
+  $(which rm) -rf "$chart"
+  echo "$chart-$version.tgz" >>".cached.${0##*.}"
+fi
