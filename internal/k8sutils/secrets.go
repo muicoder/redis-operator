@@ -95,7 +95,7 @@ func newTLSConfigVerifyingChainWithoutHostname(cert tls.Certificate, rootCAs *x5
 	return &tls.Config{
 		Certificates:       []tls.Certificate{cert},
 		RootCAs:            rootCAs,
-		MinVersion:         tls.VersionTLS12,
+		MinVersion:         tls.VersionTLS10,
 		ClientAuth:         tls.NoClientCert,
 		InsecureSkipVerify: true, // skips default verification; chain re-verified without hostname below
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
